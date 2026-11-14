@@ -20,5 +20,5 @@ internal static class UiDefaults
     internal const double DockHeight = 849;
     internal const bool FollowGlobalCorners = false;
     internal const int WebCornerRadius = 28;
-    internal static string[] ProviderOrder => ["deepseek", "chatgpt", "doubao", "xiaoyi", "custom"];
+    internal static string[] ProviderOrder => ["deepseek", "chatgpt", "doubao", "xiaoyi"];
 }

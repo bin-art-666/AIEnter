@@ -50,7 +50,7 @@ try
     foreach (double invalid in new[] { double.NaN, double.PositiveInfinity, 359d, 1201d }) Reject(() => store.Save(custom with { DockHeight = invalid }));
     foreach (double invalid in new[] { double.NaN, -1d, 20001d }) Reject(() => store.Save(custom with { DockTopOffset = invalid }));
     store.Save(custom); var reload = new AiOptionsStore(path);
-    Check(reload.Data.Provider == "custom" && reload.Data.Pinned && AiPolicy.Resolve(reload.Data).Name == "我的 AI", "Custom provider and pin survive restart");
+    Check(reload.Data.Provider == "ai-legacy" && reload.Data.Pinned && AiPolicy.Resolve(reload.Data).Name == "我的 AI", "Custom provider and pin survive restart");
     Check(AiPolicy.Resolve(custom).Key == AiPolicy.Resolve(custom with { CustomName = "别名" }).Key, "Renaming does not lose website profile or existing window");
     Check(AiPolicy.Resolve(custom).Key != AiPolicy.Resolve(custom with { CustomUrl = "https://example.com/other" }).Key, "Changed custom URL identifies a distinct window");
     foreach (string url in new[] { "http://example.com", "javascript:alert(1)", "file:///C:/test", "https://user:password@example.com/", "https://example.com/\n--flag", "", "--app=https://example.com" })
@@ -81,9 +81,9 @@ try
     Check(File.ReadAllText(path) == before && store.Data.Pinned && !File.Exists(path + ".tmp"), "Failed save preserves live and disk settings");
     File.WriteAllText(path, "{broken"); var recovered = new AiOptionsStore(path);
     Check(!recovered.ReadOnly && recovered.Warning != null, "Corrupt primary can recover from valid backup");
-    string future = Path.Combine(root, "future.json"); File.WriteAllText(future, "{\"Version\":2}");
+    string future = Path.Combine(root, "future.json"); File.WriteAllText(future, "{\"Version\":3}");
     var newer = new AiOptionsStore(future); Check(newer.ReadOnly, "Unknown versions remain read-only"); Reject(() => newer.Save(new()));
-    Check(File.ReadAllText(future) == "{\"Version\":2}", "Future record preserved");
+    Check(File.ReadAllText(future) == "{\"Version\":3}", "Future record preserved");
     string modePath = Path.Combine(root, "window-mode.json");
     File.WriteAllText(modePath, "{\"Provider\":\"deepseek\"}");
     var modes = new AiOptionsStore(modePath);
@@ -119,11 +119,11 @@ try
     Check(explicitOptions.FollowGlobalCorners && explicitOptions.WebCornerRadius == 7 && explicitOptions.DockWidth == 520
         && explicitOptions.DockHeight == 700, "Existing explicit choices remain unchanged by new defaults");
 
-    Check(AiPolicy.OrderedProviders(new()).SequenceEqual(new[] { "deepseek", "chatgpt", "doubao", "xiaoyi", "custom" }), "Missing provider order uses captured preferences");
-    var reordered = appearanceStore.Data with { ProviderOrder = ["chatgpt", "doubao", "custom", "xiaoyi", "deepseek"] };
+    Check(AiPolicy.OrderedProviders(new()).SequenceEqual(new[] { "deepseek", "chatgpt", "doubao", "xiaoyi" }), "Missing provider order uses captured preferences");
+    var reordered = appearanceStore.Data with { ProviderOrder = ["chatgpt", "doubao", "xiaoyi", "deepseek"] };
     appearanceStore.Save(reordered);
     Check(AiPolicy.OrderedProviders(new AiOptionsStore(appearancePath).Data).SequenceEqual(reordered.ProviderOrder!), "AI button order survives reload");
-    Check(AiPolicy.OrderedProviders(new(ProviderOrder: ["chatgpt"])).SequenceEqual(new[] { "chatgpt", "deepseek", "doubao", "xiaoyi", "custom" }), "Missing providers append in default order");
+    Check(AiPolicy.OrderedProviders(new(ProviderOrder: ["chatgpt"])).SequenceEqual(new[] { "chatgpt", "deepseek", "doubao", "xiaoyi" }), "Missing providers append in default order");
     Reject(() => appearanceStore.Save(reordered with { ProviderOrder = ["chatgpt", "chatgpt"] }));
     Reject(() => appearanceStore.Save(reordered with { ProviderOrder = ["unknown"] }));
     Check(appearanceStore.Data.Provider == reordered.Provider, "Reordering does not change selected AI");
@@ -139,6 +139,29 @@ try
     var loadedTheme = new AiOptionsStore(appearancePath).Data;
     Check(loadedTheme.Appearance!.ButtonColor == "" && loadedTheme.Appearance.SelectedButtonColor == "", "Explicit system colors remain automatic after default update");
     Check(loadedTheme.Provider == "xiaoyi" && loadedTheme.Pinned && !loadedTheme.FloatingPanel && loadedTheme.ProviderOrder!.SequenceEqual(explicitTheme.ProviderOrder!), "Explicit service, mode and order survive changed defaults");
+    var many = Enumerable.Range(0, 150).Select(i => new AiProvider("ai-" + i, "AI " + i, "https://example.com/" + i)).ToArray();
+    var multiple = AiPolicy.WithProviderSettings(new(), many, many.Select(p => p.Id).Reverse().ToArray(), many[1].Id);
+    appearanceStore.Save(multiple);
+    var manyReload = new AiOptionsStore(appearancePath).Data;
+    Check(manyReload.AddedProviders!.Length == 150 && manyReload.DefaultProvider == many[1].Id, "More than one hundred AI entries persist without count limits");
+    Check(AiPolicy.OrderedProviders(manyReload).Take(150).SequenceEqual(many.Reverse().Select(p => p.Id)), "Added AI shares dynamic toolbar order");
+    var selectedMany = manyReload with { Provider = many[0].Id };
+    var removedCurrent = AiPolicy.WithProviderSettings(selectedMany, many[1..], [], many[1].Id);
+    Check(removedCurrent.Provider == many[1].Id, "Removing current AI selects the chosen default");
+    var removedDefault = AiPolicy.WithProviderSettings(removedCurrent, many[2..], [], many[1].Id);
+    Check(removedDefault.Provider == "deepseek" && removedDefault.DefaultProvider == "deepseek", "Removing default AI falls back to DeepSeek");
+    var oldFile = Path.Combine(root, "legacy-custom.json");
+    File.WriteAllText(oldFile, "{\"Version\":1,\"Provider\":\"custom\",\"CustomName\":\"Legacy\",\"CustomUrl\":\"https://example.com/legacy\",\"ProviderOrder\":[\"custom\",\"deepseek\"]}");
+    var migrated = new AiOptionsStore(oldFile);
+    Check(!migrated.ReadOnly && migrated.Data.Version == 2 && migrated.Data.Provider == "ai-legacy" && migrated.Data.AddedProviders!.Length == 1, "Legacy custom AI migrates to a stable list entry");
+    Check(migrated.Data.DefaultProvider == "ai-legacy" && AiPolicy.OrderedProviders(migrated.Data)[0] == "ai-legacy", "Migration keeps current default and order");
+    Check(AiPolicy.Resolve(migrated.Data).Key == AiPolicy.Resolve(new(Provider: "custom", CustomName: "Legacy", CustomUrl: "https://example.com/legacy")).Key, "Migration retains browser profile key");
+    migrated.Save(migrated.Data);
+    Check(new AiOptionsStore(oldFile).Data.AddedProviders!.Length == 1, "Migration is idempotent");
+    Reject(() => appearanceStore.Save(multiple with { AddedProviders = [many[0], many[0]] }));
+    Reject(() => appearanceStore.Save(multiple with { AddedProviders = [many[0] with { Url = "http://example.com" }] }));
+    Reject(() => appearanceStore.Save(multiple with { AddedProviders = [many[0] with { Name = "" }] }));
+    Reject(() => appearanceStore.Save(multiple with { AddedProviders = [many[0] with { Id = "deepseek" }] }));
     Console.WriteLine($"PASS: {checks} AI configuration, navigation and geometry checks");
 }
 finally { Directory.Delete(root, true); }

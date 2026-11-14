@@ -8,9 +8,6 @@ internal sealed partial class SettingsWindow : PanelWindow
 {
     readonly AiOptionsStore options;
     readonly ComboBox provider = new() { Header = "默认 AI 服务", HorizontalAlignment = HorizontalAlignment.Stretch };
-    readonly TextBox customName = new() { Header = "自定义服务名称", MaxLength = 40 };
-    readonly TextBox customUrl = new() { Header = "自定义网址", PlaceholderText = "https://…", MaxLength = 2048 };
-    readonly StackPanel custom = new() { Spacing = 12 };
     readonly ToggleSwitch floatingMode = new() { Header = "窗口模式", OnContent = "悬浮面板", OffContent = "独立窗口" };
     readonly ToggleSwitch pinned = new() { Header = "固定 / 置顶", OnContent = "保持展开并置顶", OffContent = "悬浮自动收起 / 独立正常层级" };
     readonly ToggleSwitch followCorners = new() { Header = "网页圆角跟随界面", OnContent = "跟随界面圆角", OffContent = "使用自定义圆角" };
@@ -47,13 +44,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         fields.Children.Add(taskbarSize); fields.Children.Add(glow); fields.Children.Add(glowRange); fields.Children.Add(glowIntensity);
         fields.Children.Add(PanelTheme.Hint("图标和光晕以任务栏可用高度为上限，预留空间随大小调整。只有对话展开时显示光晕，设置窗口不会点亮。"));
         fields.Children.Add(Section("AI 与窗口"));
-        for (int index = 0; index < AiPolicy.Providers.Length; index++)
-            provider.Items.Add(new ComboBoxItem { Content = AiPolicy.Names[index], Tag = AiPolicy.Providers[index] });
-        provider.SelectionChanged += (_, _) => RefreshFields(); fields.Children.Add(provider);
-        custom.Children.Add(customName); custom.Children.Add(customUrl); fields.Children.Add(custom);
-        fields.Children.Add(Section("顶栏 AI 按钮排序"));
-        fields.Children.Add(PanelTheme.Hint("按从左到右排列；点击上移、下移调整，保存后生效。未配置的自定义 AI 暂不显示，配置后使用这里的位置。"));
-        fields.Children.Add(providerOrderRows);
+        InitializeProviderManagement(fields);
         fields.Children.Add(floatingMode); fields.Children.Add(pinned);
         fields.Children.Add(Section("窗口外观"));
         fields.Children.Add(backplateRadius); fields.Children.Add(buttonRadius); fields.Children.Add(buttonSize); fields.Children.Add(padding);
@@ -99,8 +90,6 @@ internal sealed partial class SettingsWindow : PanelWindow
             syncing = true; resetPanelSize = false;
             var value = options.Data;
             LoadProviderOrder(value);
-            provider.SelectedIndex = Array.IndexOf(AiPolicy.Providers, value.Provider);
-            customName.Text = value.CustomName; customUrl.Text = value.CustomUrl;
             floatingMode.IsOn = value.FloatingPanel; pinned.IsOn = value.Pinned;
             followCorners.IsOn = value.FollowGlobalCorners; radius.Value = value.WebCornerRadius;
             LoadAppearance(value.Appearance ?? new());
@@ -134,7 +123,6 @@ internal sealed partial class SettingsWindow : PanelWindow
     }
     void RefreshFields()
     {
-        custom.Visibility = provider.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         radius.IsEnabled = !followCorners.IsOn; glowRange.IsEnabled = glowIntensity.IsEnabled = glow.IsOn;
     }
     void Save()
@@ -142,8 +130,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         try
         {
             if (provider.SelectedItem is not ComboBoxItem item) throw new InvalidDataException("请选择 AI 服务。");
-            options.Save(options.Data with { Provider = (string)item.Tag, CustomName = customName.Text.Trim(),
-                CustomUrl = customUrl.Text.Trim(), ProviderOrder = providerOrder.ToArray(), Pinned = pinned.IsOn, FloatingPanel = floatingMode.IsOn,
+            options.Save(AiPolicy.WithProviderSettings(options.Data, providerDraft.AddedProviders ?? [], providerOrder.ToArray(), (string)item.Tag) with { Pinned = pinned.IsOn, FloatingPanel = floatingMode.IsOn,
                 FollowGlobalCorners = followCorners.IsOn, WebCornerRadius = (int)Math.Round(radius.Value), Appearance = ReadAppearance(),
                 DockWidth = resetPanelSize ? UiDefaults.DockWidth : options.Data.DockWidth,
                 DockHeight = resetPanelSize ? UiDefaults.DockHeight : options.Data.DockHeight,

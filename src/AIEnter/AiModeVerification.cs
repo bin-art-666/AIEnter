@@ -160,7 +160,8 @@ internal sealed partial class AiWindow
         Check(!Detached && options.Data.FloatingPanel, "Settings did not apply floating mode.");
         CheckPlacement();
         await CheckDraft();
-        return new { passed = true, localPageOnly = true, sameBrowser = true, draftPreserved = true,
+        await VerifyMultipleProviders(); await CheckDraft();
+        return new { passed = true, localPageOnly = true, sameBrowser = true, draftPreserved = true, multipleProviders = true, addedDraftsPreserved = true, lazyProviderLoading = true, removedProviderFallback = true,
             independentMode = true, floatingMode = true, hiddenSettingsStayHidden = true, nativeHeaderDrag = true, headerButtonsRemainInteractive = true,
             buttonColorPreview = true, buttonColorRollback = true, providerOrder = true, providerOverflowOrder = true, consistentModeCorners = true, expandedResizeEdges = true, expandedResizeClip = true, backplateCorners = true, backplatePreviewRollback = true, compactToolbar = true, hiddenFooter = true, maximumAppearanceOnNarrowWindow = true, previewRollback = true,
             bottomRight = true, legacyOffsetIgnored = true, resizeOppositeEdge = true, reanchorsOnOpen = true };

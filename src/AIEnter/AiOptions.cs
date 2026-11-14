@@ -10,17 +10,17 @@ internal sealed record AiEndpoint(string Name, string Url)
 }
 internal sealed record AiBounds(int X, int Y, int Width, int Height);
 internal enum AiPanelEdge { Left, Top, Bottom }
-internal sealed record AiOptions(int Version = 1, string Provider = UiDefaults.Provider, string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = UiDefaults.Pinned,
+internal sealed record AiOptions(int Version = 2, string Provider = UiDefaults.Provider, string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = UiDefaults.Pinned,
     Dictionary<string, AiBounds>? Layouts = null, double DockWidth = UiDefaults.DockWidth, double DockHeight = UiDefaults.DockHeight, double DockTopOffset = 0,
-    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null);
-internal static class AiPolicy
+    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null, string? DefaultProvider = null);
+internal static partial class AiPolicy
 {
     internal static double CornerRadius(AiOptions options,double global,double width,double height)
         =>Math.Max(0,Math.Min(options.FollowGlobalCorners?global:options.WebCornerRadius,Math.Min(width,height)/2));
     internal static readonly string[] Providers = ["deepseek", "doubao", "xiaoyi", "chatgpt", "custom"];
     internal static readonly string[] Names = ["DeepSeek", "豆包", "小艺", "ChatGPT", "自定义 AI"];
     internal static string[] OrderedProviders(AiOptions value) => (value.ProviderOrder ?? UiDefaults.ProviderOrder)
-        .Concat(UiDefaults.ProviderOrder).Concat(Providers).Distinct(StringComparer.Ordinal).Where(Providers.Contains).ToArray();
+        .Concat(UiDefaults.ProviderOrder).Concat(AvailableProviders(value)).Distinct(StringComparer.Ordinal).Where(AvailableProviders(value).Contains).ToArray();
     internal static IEnumerable<string> BuiltInProviders => Providers.Where(id => id != "custom");
     internal const double DefaultDockWidth = UiDefaults.DockWidth, MinimumDockWidth = 360, MaximumDockWidth = 1000;
     internal const double DefaultDockHeight = UiDefaults.DockHeight, MinimumDockHeight = 360, MaximumDockHeight = 1200;
@@ -58,7 +58,8 @@ internal static class AiPolicy
         "xiaoyi" => new("小艺", "https://xiaoyi.huawei.com/"),
         "chatgpt" => new("ChatGPT", "https://chatgpt.com/"),
         "custom" => new(value.CustomName.Trim(), Https(value.CustomUrl)),
-        _ => throw new InvalidDataException("请选择支持的 AI 服务。")
+        _ => value.AddedProviders?.FirstOrDefault(p => p.Id == value.Provider) is { } added
+            ? new(added.Name.Trim(), Https(added.Url)) : throw new InvalidDataException("请选择支持的 AI 服务。")
     };
     internal static string Https(string text)
     {
@@ -69,7 +70,7 @@ internal static class AiPolicy
     }
     internal static void Validate(AiOptions value)
     {
-        if (value.Version != 1) throw new NotSupportedException("AI 设置来自更新版本，已停止写入。");
+        if (value.Version != 2) throw new NotSupportedException("AI 设置来自更新版本，已停止写入。");
         if (!double.IsFinite(value.DockWidth) || value.DockWidth is < MinimumDockWidth or > MaximumDockWidth
             || value.WebCornerRadius is < 0 or > 40
             || !double.IsFinite(value.DockHeight) || value.DockHeight is < MinimumDockHeight or > MaximumDockHeight
@@ -78,11 +79,13 @@ internal static class AiPolicy
             || value.CustomUrl is null || value.CustomUrl.Length > 2048 || value.CustomUrl.Any(char.IsControl)
             || value.Layouts is { Count: > 32 } || value.Layouts?.Any(p => p.Key.Length != 24 || !p.Key.All(Uri.IsHexDigit) || p.Value is null || p.Value.Width is < 100 or > 20000 || p.Value.Height is < 100 or > 20000 || Math.Abs((long)p.Value.X) > 100000 || Math.Abs((long)p.Value.Y) > 100000) == true)
             throw new InvalidDataException("AI 设置无效，请检查名称、网址和窗口位置。");
-        if (value.ProviderOrder is { } order && (order.Length > Providers.Length
-            || order.Any(id => id == null || !Providers.Contains(id)) || order.Distinct(StringComparer.Ordinal).Count() != order.Length))
+        if (value.ProviderOrder is { } order && (order.Length > AvailableProviders(value).Count()
+            || order.Any(id => id == null || !AvailableProviders(value).Contains(id)) || order.Distinct(StringComparer.Ordinal).Count() != order.Length))
             throw new InvalidDataException("AI 按钮顺序包含重复或未知服务。");
+        ValidateAddedProviders(value);
         value.Appearance?.Validate();
         _ = Resolve(value);
+        if (value.DefaultProvider != null) _ = Resolve(value with { Provider = value.DefaultProvider });
         if (value.CustomUrl.Length > 0) _ = Https(value.CustomUrl);
     }
     internal static AiBounds Fit(AiBounds? saved, AiBounds work, uint dpi)
@@ -119,20 +122,20 @@ internal sealed class AiOptionsStore
     }
     static AiOptions Read(string path)
     {
-        if (new FileInfo(path).Length > 65536) throw new InvalidDataException();
+        if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException();
         var value = JsonSerializer.Deserialize<AiOptions>(File.ReadAllText(path)) ?? throw new InvalidDataException();
-        AiPolicy.Validate(value); return value with { Layouts = value.Layouts ?? [] };
+        value = AiPolicy.Upgrade(value); AiPolicy.Validate(value); return value with { Layouts = value.Layouts ?? [] };
     }
     internal void Save(AiOptions value)
     {
-        AiPolicy.Validate(value); if (ReadOnly) throw new IOException(Warning);
+        value = AiPolicy.Upgrade(value); AiPolicy.Validate(value); if (ReadOnly) throw new IOException(Warning);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temporary = path + ".tmp";
         try
         {
             using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None)) { JsonSerializer.Serialize(stream, value); stream.Flush(true); }
             if (File.Exists(path)) File.Replace(temporary, path, preserveBackup ? null : path + ".bak"); else File.Move(temporary, path);
-            Data = value with { Layouts = value.Layouts is null ? [] : new(value.Layouts), ProviderOrder = value.ProviderOrder?.ToArray() }; preserveBackup = false; Changed?.Invoke();
+            Data = value with { Layouts = value.Layouts is null ? [] : new(value.Layouts), ProviderOrder = value.ProviderOrder?.ToArray(), AddedProviders = value.AddedProviders?.ToArray() }; preserveBackup = false; Changed?.Invoke();
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }

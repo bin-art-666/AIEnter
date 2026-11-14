@@ -4,8 +4,8 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 
 ## 功能
 
-- 内置 DeepSeek、豆包、小艺、ChatGPT，支持配置自定义 HTTPS AI 网页。
-- 顶栏服务按钮可排序，窄窗口中放不下的服务进入“更多”菜单。
+- 内置 DeepSeek、豆包、小艺、ChatGPT，支持通过“添加 AI”加入多个 HTTPS AI 网页，数量不限。
+- 内置和新增服务统一排序；新增 AI 支持编辑、移除、设为默认及名称／网址搜索，窄窗口中放不下的服务进入可滚动的“更多”菜单。
 - 悬浮面板每次打开定位到工作区右下角；支持固定、调整大小及切换独立窗口。切换模式保留同一网页和草稿。
 - 紧凑单行工具栏，顶部空白可拖动独立窗口，不常驻显示标题和底部网址。
 - 可设置背板圆角、网页圆角、按钮大小、圆角、颜色与透明度；颜色分别支持普通按钮和选中 AI。
@@ -65,7 +65,7 @@ dotnet run --project tests\AiChecks --configuration Release
 .\dist\AIEnter.exe --verify-ai-modes --data-dir .build\mode-check
 ```
 
-结果写入指定目录的 `mode-result.json`。最新本机验收包括 103 项配置与几何检查，以及原生窗口模式和颜色预览检查。
+结果写入指定目录的 `mode-result.json`。最新本机验收包括 115 项配置与几何检查，以及原生窗口模式和颜色预览检查。
 
 ## 兼容性与来源
 
@@ -77,3 +77,5 @@ dotnet run --project tests\AiChecks --configuration Release
 - [任务栏辅助代码的 MIT 许可及来源](ThirdParty/TaskbarIntegration-MIT.txt)
 
 Windhawk、.NET、Windows App SDK 等依赖保留各自许可证，依赖运行时不包含在本仓库中。
+
+旧版单个自定义 AI 会自动迁移为服务列表的一项，保留名称、网址、顺序和原网页登录目录。设置保存后使用版本 2，版本 1 原配置由备份保留；请勿用旧版程序覆盖新版设置。移除 AI 只移除入口，不清理网页登录数据。默认 AI 在应用下次启动时使用，运行中的当前对话不因修改默认项而切换。

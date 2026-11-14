@@ -153,7 +153,6 @@ internal sealed partial class AiWindow : PanelWindow
             providerChoices.Clear();
             foreach (string id in AiPolicy.OrderedProviders(options.Data))
             {
-                if (id == "custom" && options.Data.CustomUrl.Length == 0) continue;
                 try { providerChoices.Add(new Choice(id, AiPolicy.Resolve(options.Data with { Provider = id }).Name)); } catch (InvalidDataException) { }
             }
             RenderProviderStrip(); RefreshProviderEnabled(); pin.IsEnabled = !options.ReadOnly; ApplyPin();
@@ -178,12 +177,11 @@ internal sealed partial class AiWindow : PanelWindow
         if (destroyed) return;
         var endpoint = AiPolicy.Resolve(options.Data);
         if (current?.Endpoint.Key == endpoint.Key && current.Ready != null)
-        { MemoryTarget(current.View, false); return; }
+        { current.Endpoint = endpoint; MemoryTarget(current.View, false); await current.Ready; return; }
         ClosePopup();
         if (current != null) { current.View.Visibility = Visibility.Collapsed; MemoryTarget(current.View, true); }
         if (!pages.TryGetValue(endpoint.Key, out var page))
         {
-            if (options.Data.Provider == "custom") foreach (var old in pages.Values.Where(p => !AiPolicy.BuiltInProviders.Select(id => AiPolicy.Resolve(new(Provider: id)).Key).Contains(p.Endpoint.Key)).ToArray()) Remove(old);
             page = new(endpoint); pages.Add(endpoint.Key, page); browsers.Children.Add(page.View);
         }
         current = page; page.View.Visibility = Visibility.Visible;

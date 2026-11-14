@@ -27,6 +27,12 @@ public partial class App
             Exit(); return;
         }
         PanelTheme.Apply(UiStyle.Data);
+        if (!arguments.Any(a => a.StartsWith("--verify-")) && !Ai.Options.ReadOnly)
+        {
+            var saved = Ai.Options.Data;
+            string preferred = saved.DefaultProvider ?? UiDefaults.Provider;
+            if (saved.Provider != preferred) Ai.Options.Save(saved with { Provider = preferred });
+        }
         StartAppearanceBridge();
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         // A hidden window keeps the WinUI lifetime independent of the toolbar.
