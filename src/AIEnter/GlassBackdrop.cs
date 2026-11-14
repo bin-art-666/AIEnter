@@ -10,11 +10,13 @@ namespace AIEnter;
 public sealed class GlassBackdrop : SystemBackdrop
 {
     MaterialOptions material;
+    internal bool TransparentCanvas { get; init; }
     public GlassBackdrop(GlassStyle style) : this(MaterialOptions.ForPreset(style)) { }
     public GlassBackdrop(MaterialOptions material) => this.material = material;
 
     public void Update(MaterialOptions material)
     {
+        if (TransparentCanvas) material = new(TintOpacity: 0, LuminosityOpacity: 0, NoBase: true);
         if (this.material == material) return;
         this.material = material;
         UpdatePalette();

@@ -16,6 +16,7 @@ internal sealed partial class AiWindow : PanelWindow
     readonly Action changed;
     readonly bool verification;
     readonly Grid root = PanelTheme.Layout();
+    readonly SystemBackdropElement backplate = PanelTheme.BackdropSurface();
     readonly Grid browsers = new();
     readonly TextBlock status = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap };
     readonly List<Choice> providerChoices = [];
@@ -63,7 +64,7 @@ internal sealed partial class AiWindow : PanelWindow
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         int corner = 1, border = unchecked((int)0xFFFFFFFE);
         Native.DwmSetWindowAttribute(handle, 33, ref corner, sizeof(int)); Native.DwmSetWindowAttribute(handle, 34, ref border, sizeof(int));
-        SystemBackdrop = PanelTheme.Backdrop();
+        SystemBackdrop = new GlassBackdrop(new MaterialOptions(TintOpacity: 0, LuminosityOpacity: 0, NoBase: true)) { TransparentCanvas = true };
         root.RowDefinitions.Add(new() { Height = GridLength.Auto });
         root.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         var controls = PanelTheme.Actions();
@@ -101,7 +102,7 @@ internal sealed partial class AiWindow : PanelWindow
         saveTimer.Tick += (_, _) => SaveFloating();
         AppWindow.Changed += (_, e) => { if (Detached && !destroyed && (e.DidPositionChange || e.DidSizeChange)) { saveTimer.Stop(); saveTimer.Start(); } };
         Closed += (_, _) => { destroyed = true; EndDockResize(true); saveTimer.Stop(); transientStatusTimer.Stop(); ClosePopup(); foreach (var page in pages.Values) page.View.Close(); pages.Clear(); };
-        var shell = new Grid(); shell.Children.Add(root); InitializeDockResize(shell);
+        var shell = new Grid(); shell.Children.Add(backplate); shell.Children.Add(root); InitializeDockResize(shell);
         InitializePanel(shell); InitializeBackplateCorners(); ApplyOptions();
     }
     static FontIcon Glyph(string value) => PanelTheme.Glyph(value);

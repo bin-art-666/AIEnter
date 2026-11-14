@@ -91,6 +91,12 @@ internal static partial class PanelTheme
     internal static Style Style(string name) => Value<Style>(name + "Style");
     static MaterialOptions Material() => new(TintOpacity: (float)Value<double>("PanelTintOpacity"), LuminosityOpacity: (float)Value<double>("PanelLuminosityOpacity"));
     internal static GlassBackdrop Backdrop() => new(Material());
+    internal static SystemBackdropElement BackdropSurface() => Track(new SystemBackdropElement
+    { IsHitTestVisible = false, SystemBackdrop = Backdrop() }, static surface =>
+    {
+        surface.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
+        ((GlassBackdrop)surface.SystemBackdrop).Update(Material());
+    });
     internal static Grid Layout() => Track(new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) }, static grid =>
     { grid.Padding = Value<Thickness>("PanelPadding"); grid.RowSpacing = Value<double>("PanelGap"); grid.CornerRadius = Value<CornerRadius>("PanelRadius"); });
     internal static Grid Header(UIElement title, FrameworkElement actions)

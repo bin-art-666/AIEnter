@@ -28,7 +28,7 @@ internal sealed partial class AiWindow
         if (width <= 0 || height <= 0) return;
         int radius = Math.Min(Math.Min(width, height) / 2,
             (int)Math.Round(App.Appearance.BackplateRadius * Native.GetDpiForWindow(handle) / 96d));
-        root.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
+        root.CornerRadius = backplate.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
         if (backplateShape == (width, height, radius)) return;
         // Clip the native window as well as its XAML content: acrylic must not
         // remain visible behind the transparent corners. Windows owns a set HRGN.
@@ -43,6 +43,12 @@ internal sealed partial class AiWindow
     }
     internal void VerifyBackplateCorners()
     {
+        if (SystemBackdrop is not GlassBackdrop { TransparentCanvas: true, IsNoBaseActive: true })
+            throw new Exception("Window canvas still paints a rectangular glass backdrop.");
+        if (backplate.SystemBackdrop is not GlassBackdrop { IsReady: true } || backplate.CornerRadius.TopLeft != App.Appearance.BackplateRadius)
+            throw new Exception("Glass material is not bound to the rounded backplate element.");
+        if (Math.Abs(backplate.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1 || Math.Abs(backplate.ActualHeight - ((FrameworkElement)Content).ActualHeight) > 1)
+            throw new Exception("Rounded glass does not fill the window client area.");
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var origin = new Native.Point(); ClientToScreen(handle, ref origin);
         GetBackplateWindowRect(handle, out var bounds); GetBackplateClientRect(handle, out var client);
