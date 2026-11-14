@@ -18,13 +18,16 @@ public partial class App
             string native = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".tools", "windhawk", "AppData", "Engine", "ModsWritable", "aienter-taskbar-ai.ini"));
             async Task WaitFor(int glow, int size = UiDefaults.TaskbarIconSize)
             {
+                var expectedAppearance = Appearance;
                 for (int attempt = 0; attempt < 80; attempt++)
                 {
                     try
                     {
                         var fields = File.ReadAllLines(native).Where(line => line.Contains('=')).Select(line => line.Split('=', 2))
                             .GroupBy(pair => pair[0]).ToDictionary(group => group.Key, group => group.Last()[1]);
-                        if (fields.GetValueOrDefault("GlowActive") == glow.ToString() && fields.GetValueOrDefault("ArtworkSize") == size.ToString()) return;
+                        if (fields.GetValueOrDefault("GlowActive") == glow.ToString() && fields.GetValueOrDefault("ArtworkSize") == size.ToString()
+                            && fields.GetValueOrDefault("GlowRange") == expectedAppearance.GlowRange.ToString()
+                            && fields.GetValueOrDefault("GlowIntensity") == expectedAppearance.GlowIntensity.ToString()) return;
                     }
                     catch (IOException) { }
                     await Task.Delay(100);

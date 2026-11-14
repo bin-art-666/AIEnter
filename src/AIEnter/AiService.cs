@@ -26,6 +26,12 @@ internal sealed class AiService
         window ??= new AiWindow(Options, directory, display, () => Changed?.Invoke(), verification);
         await window.Open(display, top ?? display.Info.Work.Top);
     }
+    internal async Task ToggleFromTaskbar(DesktopMonitor display, uint pressTime = 0, Native.Point pressPoint = default)
+    {
+        if (SessionState.Locked == true) return;
+        window ??= new AiWindow(Options, directory, display, () => Changed?.Invoke(), verification);
+        await window.ToggleFromTaskbar(display, pressTime, pressPoint);
+    }
     internal async Task OpenForDrop(DesktopMonitor display, bool activate)
     {
         if (SessionState.Locked == true) return;

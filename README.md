@@ -1,6 +1,6 @@
 # AIEnter · AI 入口
 
-Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实任务栏按钮并预留位置，左键打开对话，右键打开设置。
+Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实任务栏按钮并预留位置，左键切换对话显示／收起，右键打开设置。
 
 ## 功能
 
@@ -47,6 +47,7 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 
 ```powershell
 .\dist\AIEnter.exe             # 打开 AI
+.\dist\AIEnter.exe --toggle-ai # 切换 AI 显示／收起
 .\dist\AIEnter.exe --settings  # 打开设置
 .\dist\AIEnter.exe --quit      # 退出应用
 .\tools\taskbar-ai\Stop.ps1    # 停止应用及任务栏入口

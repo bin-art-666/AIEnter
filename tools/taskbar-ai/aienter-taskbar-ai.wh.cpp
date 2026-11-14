@@ -33,6 +33,7 @@
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
+#include <winrt/Windows.UI.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
@@ -640,10 +641,13 @@ struct AttachedButton {
     int lastX = -1, lastRight = -1, lastWidth = -1;
     slot::Lease lease;
     winrt::event_token click{}, rightTap{}, layout{}, dragEnter{}, dragOver{}, dragLeave{}, drop{}, hoverTick{};
+    winrt::Windows::Foundation::IInspectable pointerPress{nullptr};
     xaml::DispatcherTimer hoverTimer{nullptr};
     xaml::Media::Brush normalBorder{nullptr};
     xaml::Thickness normalThickness{};
     bool dragging = false;
+    DWORD pressTime = 0; POINT pressPoint{};
+    ULONGLONG lastToggleAt = 0;
 };
 static AttachedButton* g_attached = nullptr;
 static void LogFailure(PCWSTR context);
@@ -844,6 +848,7 @@ static void RemoveButton() {
         state.button.DragEnter(state.dragEnter); state.button.DragOver(state.dragOver);
         state.button.DragLeave(state.dragLeave); state.button.Drop(state.drop);
         if (state.hoverTimer) { state.hoverTimer.Stop(); state.hoverTimer.Tick(state.hoverTick); }
+        state.button.RemoveHandler(xaml::UIElement::PointerPressedEvent(), state.pointerPress);
         state.button.Click(state.click);
         state.button.RightTapped(state.rightTap);
         state.button.LayoutUpdated(state.layout);
@@ -901,18 +906,29 @@ static void AttachButton(void* parameter) {
     glyphHost.Children().Append(glow); glyphHost.Children().Append(icon);
     button.Content(glyphHost);
     xaml::Automation::AutomationProperties::SetName(button, L"AIEnter AI 对话");
-    controls::ToolTipService::SetToolTip(button, winrt::box_value(L"AIEnter AI · 左键打开对话，右键打开设置"));
+    controls::ToolTipService::SetToolTip(button, winrt::box_value(L"AIEnter AI · 左键打开／收起对话，右键打开设置"));
     auto state = new AttachedButton;
     state->parent = parent;
     state->button = button; state->glyphHost = glyphHost; state->glow = glow; state->icon = icon;
     if (!slot::AcquireAt(parent, position, L"AIEnterAiPosition", state->lease)) { delete state; return; }
     try {
-        state->click = button.Click([](auto&&, auto&&) { LaunchAi(); });
+        state->pointerPress = winrt::box_value(xaml::Input::PointerEventHandler([state](auto&&, auto&& args) {
+            if (!args.GetCurrentPoint(state->button).Properties().IsLeftButtonPressed()) return;
+            state->pressTime = static_cast<DWORD>(GetMessageTime());
+            DWORD position = GetMessagePos(); state->pressPoint = {static_cast<short>(LOWORD(position)), static_cast<short>(HIWORD(position))};
+        }));
+        button.AddHandler(xaml::UIElement::PointerPressedEvent(), state->pointerPress, true);
+        state->click = button.Click([state](auto&&, auto&&) {
+            auto time = state->pressTime; auto point = state->pressPoint; state->pressTime = 0;
+            ULONGLONG now = GetTickCount64(); if (now - state->lastToggleAt < 300) return; state->lastToggleAt = now;
+            std::wstring command = L"--toggle-ai --gesture " + std::to_wstring(time) + L"," + std::to_wstring(point.x) + L"," + std::to_wstring(point.y);
+            LaunchAiCommand(command.c_str());
+        });
         // A direct right-click action avoids keeping callbacks in an open flyout at unload.
         state->rightTap = button.RightTapped([](auto&&, auto&& args) { args.Handled(true); LaunchAi(true); });
         if (!slot::PlaceChild(parent, state->lease, button)) throw winrt::hresult_error(E_FAIL);
     } catch (...) {
-        button.Click(state->click); button.RightTapped(state->rightTap);
+        button.RemoveHandler(xaml::UIElement::PointerPressedEvent(), state->pointerPress); button.Click(state->click); button.RightTapped(state->rightTap);
         slot::Release(parent, state->lease); delete state; throw;
     }
     g_attached = state;

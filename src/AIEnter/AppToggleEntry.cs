@@ -1,0 +1,49 @@
+using System.IO.MemoryMappedFiles;
+
+namespace AIEnter;
+
+public partial class App
+{
+    EventWaitHandle? toggleEvent;
+    RegisteredWaitHandle? toggleWait;
+    MemoryMappedFile? toggleInput;
+    MemoryMappedViewAccessor? toggleView;
+    long lastToggleAt;
+    void InitializeToggleEntry(string prefix)
+    {
+        toggleEvent = new(false, EventResetMode.AutoReset, prefix + ".Toggle");
+        toggleInput = MemoryMappedFile.CreateOrOpen(prefix + ".ToggleInput", 16);
+        toggleView = toggleInput.CreateViewAccessor(0, 16);
+    }
+    void SignalToggle(string[] arguments)
+    {
+        int index = Array.IndexOf(arguments, "--gesture");
+        var fields = index >= 0 && index + 1 < arguments.Length ? arguments[index + 1].Split(',') : [];
+        uint time = 0; int x = 0, y = 0;
+        if (fields.Length == 3 && uint.TryParse(fields[0], out var parsedTime) && int.TryParse(fields[1], out var parsedX) && int.TryParse(fields[2], out var parsedY))
+            { time = parsedTime; x = parsedX; y = parsedY; }
+        toggleView!.Write(0, time); toggleView.Write(4, x); toggleView.Write(8, y);
+        Thread.MemoryBarrier(); toggleEvent!.Set();
+    }
+    async Task ToggleAiWindow()
+    {
+        long now = Environment.TickCount64;
+        if (aiQuitting || now - lastToggleAt < 300) return;
+        lastToggleAt = now;
+        try
+        {
+            uint time = toggleView!.ReadUInt32(0);
+            var point = new Native.Point { X = toggleView.ReadInt32(4), Y = toggleView.ReadInt32(8) };
+            await Ai.ToggleFromTaskbar(Native.Monitors().First(m => m.Primary), time, point);
+        }
+        catch (Exception error)
+        {
+            Directory.CreateDirectory(DataDirectory);
+            File.AppendAllText(Path.Combine(DataDirectory, "ai-launch.log"), $"{DateTimeOffset.Now:O} {error}\n");
+        }
+    }
+    void DisposeToggleEntry()
+    {
+        toggleWait?.Unregister(null); toggleEvent?.Dispose(); toggleView?.Dispose(); toggleInput?.Dispose();
+    }
+}

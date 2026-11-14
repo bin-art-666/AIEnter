@@ -13,6 +13,12 @@ internal abstract class PanelWindow : Window
     bool closed;
     int modalDepth;
     int dragDepth;
+    uint outsidePressTime;
+    Native.Point outsidePressPoint;
+    bool hasOutsidePress;
+    internal void ObserveOutsidePress(uint time, Native.Point point) { outsidePressTime = time; outsidePressPoint = point; hasOutsidePress = true; }
+    internal bool DismissedByPress(uint time, Native.Point point) => !IsOpen && hasOutsidePress
+        && unchecked(time - outsidePressTime) <= 50 && point.X == outsidePressPoint.X && point.Y == outsidePressPoint.Y;
     OutsideClickWatcher? outsideClicks;
     PanelCaption? caption;
     protected void InitializeFloatingCaption(FrameworkElement header, FrameworkElement controls, Func<bool> enabled, FrameworkElement? leading = null) => caption = new(this, header, controls, enabled, leading);
@@ -63,7 +69,7 @@ internal abstract class PanelWindow : Window
         bool entering = !IsOpen;
         PanelTheme.Refresh(this);
         activationVersion++;
-        IsOpen = true;
+        IsOpen = true; hasOutsidePress = false;
         // Activate alone is not a reliable way to re-show an AppWindow that was
         // explicitly hidden, especially after a non-activating drag-hover open.
         AppWindow.Show(false);
@@ -74,7 +80,8 @@ internal abstract class PanelWindow : Window
         outsideClicks?.Dispose();
         outsideClicks = new OutsideClickWatcher(WinRT.Interop.WindowNative.GetWindowHandle(this), DispatcherQueue,
             () => { if (!VisibilityProtected && DismissOnOutside) Hide(); },
-            UsesPanelWheel?(point,delta,horizontal)=>!VisibilityProtected&&HandlePanelWheel(point,delta,horizontal):null);
+            UsesPanelWheel?(point,delta,horizontal)=>!VisibilityProtected&&HandlePanelWheel(point,delta,horizontal):null,
+            ObserveOutsidePress);
         NotifyPresentationChanged();
     }
 

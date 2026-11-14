@@ -171,6 +171,15 @@ internal sealed partial class AiWindow : PanelWindow
         ToolTipService.SetToolTip(pin, options.Data.Pinned ? "取消固定" : "固定 AI 面板");
         ((OverlappedPresenter)AppWindow.Presenter).IsAlwaysOnTop = !Detached || options.Data.Pinned;
     }
+    internal async Task ToggleFromTaskbar(DesktopMonitor monitor, uint pressTime = 0, Native.Point pressPoint = default)
+    {
+        if (ModalActive || DragActive) return;
+        bool minimized = ((OverlappedPresenter)AppWindow.Presenter).State == OverlappedPresenterState.Minimized;
+        if (IsOpen && !minimized) { Hide(); return; }
+        if (!minimized && pressTime != 0 && DismissedByPress(pressTime, pressPoint)) return;
+        if (minimized) ((OverlappedPresenter)AppWindow.Presenter).Restore();
+        await Open(monitor, monitor.Info.Work.Top);
+    }
     internal async Task Open(DesktopMonitor monitor, int top, bool activate = true)
     {
         display = monitor; dockTop = top;

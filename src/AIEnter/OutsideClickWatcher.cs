@@ -12,7 +12,7 @@ internal sealed class OutsideClickWatcher : IDisposable
     IntPtr hook;
     bool disposed;
 
-    internal OutsideClickWatcher(IntPtr panel, DispatcherQueue dispatcher, Action dismiss, Func<Native.Point,int,bool,bool>? wheel=null)
+    internal OutsideClickWatcher(IntPtr panel, DispatcherQueue dispatcher, Action dismiss, Func<Native.Point,int,bool,bool>? wheel=null, Action<uint, Native.Point>? outsidePress=null)
     {
         procedure = (code, message, data) =>
         {
@@ -31,7 +31,10 @@ internal sealed class OutsideClickWatcher : IDisposable
                 var point = Marshal.PtrToStructure<Native.Point>(data);
                 bool toggleClick = message.ToInt64() == 0x0201 && PanelToggleTargets.Contains(point);
                 if (!toggleClick && !Native.IsPanelWindow(panel, WindowFromPoint(point)))
+                {
+                    outsidePress?.Invoke(unchecked((uint)Marshal.ReadInt32(data, 16)), point);
                     dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => { if (!disposed) dismiss(); });
+                }
             }
             return CallNextHookEx(IntPtr.Zero, code, message, data);
         };
