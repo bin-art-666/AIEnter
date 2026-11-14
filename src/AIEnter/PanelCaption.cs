@@ -14,6 +14,7 @@ internal sealed class PanelCaption : IDisposable
     readonly FrameworkElement? leading;
     InputNonClientPointerSource? source;
     bool disposed, queued;
+    static readonly NonClientRegionKind[] ResizeRegions = [NonClientRegionKind.TopBorder, NonClientRegionKind.LeftBorder, NonClientRegionKind.BottomBorder, NonClientRegionKind.RightBorder];
     internal PanelCaption(Window owner, FrameworkElement header, FrameworkElement controls, Func<bool> enabled, FrameworkElement? leading=null)
     {
         this.owner = owner; this.header = header; this.controls = controls; this.enabled = enabled;this.leading=leading;
@@ -35,14 +36,20 @@ internal sealed class PanelCaption : IDisposable
         if (disposed) return;
         source ??= InputNonClientPointerSource.GetForWindowId(owner.AppWindow.Id);
         if (!enabled() || owner.Content is not FrameworkElement root || header.XamlRoot == null || header.ActualHeight <= 0 || controls.ActualWidth <= 0)
-        { source.ClearRegionRects(NonClientRegionKind.Caption); return; }
+        { source.ClearRegionRects(NonClientRegionKind.Caption); foreach (var region in ResizeRegions) source.ClearRegionRects(region); return; }
         double scale = header.XamlRoot.RasterizationScale;
         var origin = new Native.Point(); var handle = WinRT.Interop.WindowNative.GetWindowHandle(owner);
         ClientToScreen(handle, ref origin); GetWindowRect(handle, out var window);
+        int grip = Math.Max(4, (int)Math.Round(5 * scale));
+        int width = window.Right - window.Left, height = window.Bottom - window.Top;
+        source.SetRegionRects(NonClientRegionKind.TopBorder, [new(0, 0, width, grip)]);
+        source.SetRegionRects(NonClientRegionKind.BottomBorder, [new(0, height - grip, width, grip)]);
+        source.SetRegionRects(NonClientRegionKind.LeftBorder, [new(0, grip, grip, Math.Max(1, height - grip * 2))]);
+        source.SetRegionRects(NonClientRegionKind.RightBorder, [new(width - grip, grip, grip, Math.Max(1, height - grip * 2))]);
         var position = header.TransformToVisual(root).TransformPoint(new());
-        int x = origin.X - window.Left + (int)Math.Round(4 * scale);
-        int y = origin.Y - window.Top + (int)Math.Round(4 * scale);
-        int right = origin.X - window.Left + (int)Math.Floor(root.ActualWidth * scale) - (int)Math.Round(4 * scale);
+        int x = origin.X - window.Left + grip;
+        int y = origin.Y - window.Top + grip;
+        int right = origin.X - window.Left + (int)Math.Floor(root.ActualWidth * scale) - grip;
         int bottom = origin.Y - window.Top + (int)Math.Ceiling((position.Y + header.ActualHeight + 4) * scale);
         var regions = new List<RectInt32>();
         if (right > x && bottom > y) regions.Add(new(x, y, right - x, bottom - y));
@@ -87,6 +94,7 @@ internal sealed class PanelCaption : IDisposable
         if (owner.Content is FrameworkElement root) root.UpdateLayout();
         await Task.Delay(120); Refresh();
         var rectangles = source!.GetRegionRects(NonClientRegionKind.Caption) ?? [];
+        foreach (var kind in ResizeRegions) if (((source.GetRegionRects(kind)?.Length ?? 0) > 0) != active) throw new Exception("WinUI resize regions do not match the window mode.");
         if (!active) { if (rectangles.Length != 0) throw new Exception("Docked panel retained caption drag region"); return; }
         if (rectangles.Length == 0) throw new Exception("Detached window has no native caption region");
         var rectangle = rectangles[0]; var handle = WinRT.Interop.WindowNative.GetWindowHandle(owner);
@@ -120,7 +128,7 @@ internal sealed class PanelCaption : IDisposable
         if (disposed) return; disposed = true;
         header.Loaded -= Loaded; header.SizeChanged -= SizeChanged; controls.SizeChanged -= SizeChanged; owner.AppWindow.Changed -= WindowChanged;
         if(leading!=null)leading.SizeChanged-=SizeChanged;
-        try { source?.ClearRegionRects(NonClientRegionKind.Caption); } catch { /* Window may already be destroyed. */ }
+        try { source?.ClearRegionRects(NonClientRegionKind.Caption); foreach (var region in ResizeRegions) source?.ClearRegionRects(region); } catch { /* Window may already be destroyed. */ }
     }
     [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr window, ref Native.Point point);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out Native.Rect rectangle);

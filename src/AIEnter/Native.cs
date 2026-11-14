@@ -91,8 +91,8 @@ internal static class Native
     internal static void RestoreResizeFrame(IntPtr window)
     {
         uint style = unchecked((uint)GetWindowLongPtr(window, -16).ToInt64());
-        SetWindowLongPtr(window, -16, new IntPtr(unchecked((int)((style & ~0x80000000u) | 0x00040000u))));
-        int policy = 2;
+        SetWindowLongPtr(window, -16, new IntPtr(unchecked((int)((style & ~(0x80000000u | 0x00C00000u)) | 0x00040000u))));
+        int policy = 1; // Custom AI frame owns painting; retain WS_THICKFRAME only for sizing.
         DwmSetWindowAttribute(window, 2, ref policy, sizeof(int));
         SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, 0x0037);
     }

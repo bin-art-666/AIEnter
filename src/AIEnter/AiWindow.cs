@@ -61,7 +61,7 @@ internal sealed partial class AiWindow : PanelWindow
         presenter.IsResizable = presenter.IsMaximizable = presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true;
         AppWindow.IsShownInSwitchers = false;
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        int corner = 2, border = unchecked((int)0xFFFFFFFE);
+        int corner = 1, border = unchecked((int)0xFFFFFFFE);
         Native.DwmSetWindowAttribute(handle, 33, ref corner, sizeof(int)); Native.DwmSetWindowAttribute(handle, 34, ref border, sizeof(int));
         SystemBackdrop = PanelTheme.Backdrop();
         root.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -300,7 +300,7 @@ internal sealed partial class AiWindow : PanelWindow
             AutomationProperties.SetName(expand, name); ToolTipService.SetToolTip(expand, name);
             ApplyPin();
             if (IsOpen) ShowPanel();
-            RefreshBackplateCorners();
+            backplateShape = null; RefreshBackplateCorners();
             UpdateFloatingCaption();
         }
         finally { changingMode = false; }

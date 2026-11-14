@@ -135,9 +135,16 @@ internal sealed partial class AiWindow
         CheckPlacement();
         await CheckDraft();
 
+        int floatingRadius = backplateShape!.Value.Radius;
         ToggleDetached();
         Check(Detached && AppWindow.IsShownInSwitchers && !options.Data.FloatingPanel, "Expansion did not enter and save independent mode.");
         await VerifyFloatingCaption(true); VerifyBackplateCorners();
+        Check(backplateShape!.Value.Radius == floatingRadius, "Expanded mode changed the configured backplate radius.");
+        var expandedSize = AppWindow.Size;
+        AppWindow.Resize(new(expandedSize.Width - 60, expandedSize.Height - 40));
+        await Task.Delay(180); VerifyBackplateCorners();
+        AppWindow.Resize(expandedSize);
+        await Task.Delay(180); VerifyBackplateCorners();
         await CheckDraft();
         ToggleDetached();
         Check(!Detached && !AppWindow.IsShownInSwitchers && options.Data.FloatingPanel, "Return did not restore floating mode.");
@@ -155,7 +162,7 @@ internal sealed partial class AiWindow
         await CheckDraft();
         return new { passed = true, localPageOnly = true, sameBrowser = true, draftPreserved = true,
             independentMode = true, floatingMode = true, hiddenSettingsStayHidden = true, nativeHeaderDrag = true, headerButtonsRemainInteractive = true,
-            buttonColorPreview = true, buttonColorRollback = true, providerOrder = true, providerOverflowOrder = true, backplateCorners = true, backplatePreviewRollback = true, compactToolbar = true, hiddenFooter = true, maximumAppearanceOnNarrowWindow = true, previewRollback = true,
+            buttonColorPreview = true, buttonColorRollback = true, providerOrder = true, providerOverflowOrder = true, consistentModeCorners = true, expandedResizeEdges = true, expandedResizeClip = true, backplateCorners = true, backplatePreviewRollback = true, compactToolbar = true, hiddenFooter = true, maximumAppearanceOnNarrowWindow = true, previewRollback = true,
             bottomRight = true, legacyOffsetIgnored = true, resizeOppositeEdge = true, reanchorsOnOpen = true };
     }
 }

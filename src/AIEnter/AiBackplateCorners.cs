@@ -6,8 +6,11 @@ namespace AIEnter;
 internal sealed partial class AiWindow
 {
     (int Width, int Height, int Radius)? backplateShape;
+    AiResizeFrame? resizeFrame;
     void InitializeBackplateCorners()
     {
+        resizeFrame = new AiResizeFrame(WinRT.Interop.WindowNative.GetWindowHandle(this), () => Detached);
+        Closed += (_, _) => resizeFrame.Dispose();
         PanelTheme.Changed += RefreshBackplateCorners;
         AppWindow.Changed += (_, args) =>
         {
@@ -40,7 +43,11 @@ internal sealed partial class AiWindow
     }
     internal void VerifyBackplateCorners()
     {
-        RefreshBackplateCorners();
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var origin = new Native.Point(); ClientToScreen(handle, ref origin);
+        GetBackplateWindowRect(handle, out var bounds); GetBackplateClientRect(handle, out var client);
+        if (origin.X != bounds.Left || origin.Y != bounds.Top || client.Right != AppWindow.Size.Width || client.Bottom != AppWindow.Size.Height)
+            throw new Exception("System non-client frame changed the visible backplate bounds.");
         var region = CreateRoundRectRgn(0, 0, 1, 1, 0, 0);
         try
         {
@@ -48,6 +55,11 @@ internal sealed partial class AiWindow
                 throw new Exception("Native backplate clip is missing.");
             var shape = backplateShape!.Value;
             int w = shape.Width, h = shape.Height, r = shape.Radius;
+            if (w != AppWindow.Size.Width || h != AppWindow.Size.Height) throw new Exception("Backplate clip retained its previous size.");
+            var expected = CreateRoundRectRgn(0, 0, w + 1, h + 1, r * 2, r * 2);
+            try { if (!EqualRgn(region, expected)) throw new Exception("Native backplate no longer uses the configured circular corners."); }
+            finally { DeleteObject(expected); }
+            if (Detached) resizeFrame!.VerifyEdges();
             if (PtInRegion(region, 0, 0) || PtInRegion(region, w - 1, 0)
                 || PtInRegion(region, 0, h - 1) || PtInRegion(region, w - 1, h - 1)
                 || !PtInRegion(region, r, 1) || !PtInRegion(region, w / 2, h / 2)
@@ -58,6 +70,9 @@ internal sealed partial class AiWindow
         }
         finally { DeleteObject(region); }
     }
+    [DllImport("user32.dll", EntryPoint = "GetWindowRect")] static extern bool GetBackplateWindowRect(IntPtr window, out Native.Rect rect);
+    [DllImport("user32.dll", EntryPoint = "GetClientRect")] static extern bool GetBackplateClientRect(IntPtr window, out Native.Rect rect);
+    [DllImport("gdi32.dll")] static extern bool EqualRgn(IntPtr first, IntPtr second);
     [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
     [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window, IntPtr region, bool redraw);
     [DllImport("user32.dll")] static extern int GetWindowRgn(IntPtr window, IntPtr region);
