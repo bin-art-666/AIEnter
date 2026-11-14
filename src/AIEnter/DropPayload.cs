@@ -3,7 +3,7 @@ using Windows.Storage.Streams;
 
 namespace AIEnter;
 
-internal sealed class DropPayload : IDisposable
+internal sealed partial class DropPayload : IDisposable
 {
     DropTransfer.Import? import;
     readonly List<DropPayload> children = [];

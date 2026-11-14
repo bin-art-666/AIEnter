@@ -22,12 +22,17 @@ public partial class App
         settingsEvent = new(false, EventResetMode.AutoReset, prefix + ".Settings");
         if (!first || arguments.Contains("--quit"))
         {
-            if (!first) (arguments.Contains("--quit") ? aiQuitEvent : arguments.Contains("--settings") ? settingsEvent : aiOpenEvent).Set();
+            if (!first)
+            {
+                if (arguments.Contains("--taskbar-drop") || arguments.Contains("--drag-hover"))
+                    SignalDropEntry(prefix, arguments.Contains("--taskbar-drop"));
+                else (arguments.Contains("--quit") ? aiQuitEvent : arguments.Contains("--settings") ? settingsEvent : aiOpenEvent).Set();
+            }
             aiOpenEvent.Dispose(); aiQuitEvent.Dispose(); settingsEvent.Dispose(); instance.Dispose();
             Exit(); return;
         }
         PanelTheme.Apply(UiStyle.Data);
-        if (!arguments.Any(a => a.StartsWith("--verify-")) && !Ai.Options.ReadOnly)
+        if (!arguments.Any(a => a.StartsWith("--verify-") || a is "--taskbar-drop" or "--drag-hover") && !Ai.Options.ReadOnly)
         {
             var saved = Ai.Options.Data;
             string preferred = saved.DefaultProvider ?? UiDefaults.Provider;
@@ -44,7 +49,10 @@ public partial class App
             (_, _) => dispatcher.TryEnqueue(QuitStandaloneAi), null, Timeout.Infinite, true);
         settingsWait = ThreadPool.RegisterWaitForSingleObject(settingsEvent,
             (state, timedOut) => dispatcher.TryEnqueue(OpenSettings), null, Timeout.Infinite, false);
-        if (arguments.Any(a => a is "--verify-taskbar" or "--verify-taskbar-crash"))
+        InitializeDropEntry(prefix, dispatcher);
+        if (arguments.Contains("--taskbar-drop") || Directory.Exists(Path.Combine(DataDirectory, "incoming-drops")) && Directory.EnumerateFiles(Path.Combine(DataDirectory, "incoming-drops"), "*.json").Any()) _ = DrainTaskbarDrops();
+        else if (arguments.Contains("--drag-hover")) _ = OpenDropEntry(false);
+        else if (arguments.Any(a => a is "--verify-taskbar" or "--verify-taskbar-crash"))
             _ = VerifyTaskbarAppearance(arguments.Contains("--verify-taskbar-crash"));
         else if (arguments.Contains("--settings")) OpenSettings();
         else _ = OpenAiWindow();
@@ -79,7 +87,7 @@ public partial class App
         if (aiQuitting) return;
         aiQuitting = true;
         aiOpenWait?.Unregister(null); aiQuitWait?.Unregister(null); settingsWait?.Unregister(null);
-        settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
+        DisposeDropEntry(); settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
         aiOpenEvent?.Dispose(); aiQuitEvent?.Dispose(); settingsEvent?.Dispose(); instance?.Dispose();
         Exit();
     }

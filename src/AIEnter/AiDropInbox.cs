@@ -27,11 +27,19 @@ internal sealed partial class AiWindow
     internal async Task<bool> ReceiveDrop(DataPackageView view)
     {
         if (transferringDrop || ModalActive) return false;
-        using var lease = KeepOpen();
+        using var lease = KeepOpenForDrag();
+        string provider = options.Data.Provider;
         var payload = await DropPayload.Read(view);
+        return await ReceivePayload(payload, provider);
+    }
+    internal async Task<bool> ReceivePayload(DropPayload payload, string provider)
+    {
+        if (transferringDrop || ModalActive) { payload.Dispose(); return false; }
+        using var lease = KeepOpen();
         bool retained = false;
         try
         {
+            if (options.Data.Provider != provider) throw new IOException("接收期间 AI 已切换，请回到原 AI 后重新拖入。");
             if (payload.Bitmap != null)
             {
                 string path = await ImageAttachments.Save(payload.Bitmap); payload.OwnFile(path); payload.Files = [path]; payload.Bitmap = null;
@@ -54,8 +62,11 @@ internal sealed partial class AiWindow
                 if (choice == ContentDialogResult.None) return false;
                 append = choice == ContentDialogResult.Primary;
             }
-            StageDrop(payload, append); retained = true; RenderDropInbox();
-            SetStatus("已在本机暂存，等待确认；本次内容尚未交给网站。"); ConfirmIncomingDrop(); return true;
+            StageDrop(payload, append); retained = true;
+            dropInbox.Visibility = Visibility.Collapsed; if (dropContent != null) dropContent.RowSpacing = 0;
+            ConfirmIncomingDrop();
+            if (current?.Ready != null) await current.Ready;
+            await TransferDrop(); return true;
         }
         finally { if (!retained) payload.Dispose(); }
     }
@@ -79,7 +90,7 @@ internal sealed partial class AiWindow
         dropInbox.Children.Clear();
         dropInbox.Visibility = Visibility.Visible;
         if (dropContent != null) dropContent.RowSpacing = 8;
-        dropInbox.Children.Add(new TextBlock { Text = "待交给 AI", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        dropInbox.Children.Add(new TextBlock { Text = "尚未放入 AI", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         dropInbox.Children.Add(new TextBlock { Text = payload.Text.Length > 300 ? payload.Text[..300] + "…" : payload.Text, MaxHeight = 80, TextWrapping = TextWrapping.Wrap });
         foreach (string file in payload.Files)
             dropInbox.Children.Add(new TextBlock { Text = Path.GetFileName(file), TextTrimming = TextTrimming.CharacterEllipsis });
@@ -90,10 +101,16 @@ internal sealed partial class AiWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         dropInbox.Children.Add(new TextBlock { Text = "目标：" + pendingTargetName, FontSize = 12, Opacity = .7 });
-        dropInbox.Children.Add(new TextBlock { Text = "确认后文件可能立即上传到当前 AI 网站；文字仅填入草稿，不自动发送消息。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
+        dropInbox.Children.Add(new TextBlock { Text = "网页尚未接收，请打开输入框或附件区域后重试。文件加入附件时网站可能开始上传，不自动发送消息。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var confirm = new Button { Content = "确认交给 " + pendingTargetName };
+        var confirm = new Button { Content = "重试放入 " + pendingTargetName };
         confirm.Click += async (_, _) => { if (transferringDrop) return; confirm.IsEnabled = false; await TransferDrop(); confirm.IsEnabled = true; }; actions.Children.Add(confirm);
+        if (payload.Text.Length > 0)
+        {
+            var copy = new Button { Content = "复制文字／链接" };
+            copy.Click += (_, _) => { var data = new DataPackage(); data.SetText(payload.Text); Clipboard.SetContent(data); SetStatus("已复制，可粘贴到当前 AI 输入框。"); };
+            actions.Children.Add(copy);
+        }
         var cancel = new Button { Content = "取消" }; cancel.Click += (_, _) => { if (!transferringDrop) ClearDropInbox(); }; actions.Children.Add(cancel); dropInbox.Children.Add(actions);
     }
     void ClearDropInbox()
@@ -115,24 +132,28 @@ internal sealed partial class AiWindow
             if (payload.Files.Length > 0)
             {
                 if (payload.Files.Any(p => !File.Exists(p))) throw new IOException("附件原位置已失效，请重新拖入。");
-                string raw = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = "(()=>{if(!document.querySelector('textarea,[contenteditable=true]'))return null;const inputs=document.querySelectorAll('input[type=file]:not([disabled])');return inputs.length===1?inputs[0]:null;})()", returnByValue = false }));
+                string raw = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = DropWebScripts.FileInput(payload.Files), returnByValue = false }));
                 using var doc = JsonDocument.Parse(raw); var node = doc.RootElement.GetProperty("result");
                 if (!node.TryGetProperty("objectId", out var objectId) || node.TryGetProperty("subtype", out var subtype) && subtype.GetString() == "null")
                     throw new IOException("网页附件入口未就绪或存在多个入口。请打开网页的附件区域；如仍无法确定，请用网页附件按钮手动选择，暂存内容仍保留。");
-                // Giving files to the site may start an upload: this path only runs after the explicit native confirmation.
-                await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", JsonSerializer.Serialize(new { files = payload.Files, objectId = objectId.GetString() }));
-                payload.Commit(); payload.Files = []; pendingFilesDelivered = true;
+                // The user explicitly dropped these files into this AI; attach without submitting a message.
+                try
+                {
+                    await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", JsonSerializer.Serialize(new { files = payload.Files, objectId = objectId.GetString() }));
+                    payload.Commit(); payload.Files = []; pendingFilesDelivered = true;
+                }
+                finally { try { await core.CallDevToolsProtocolMethodAsync("Runtime.releaseObject", JsonSerializer.Serialize(new { objectId = objectId.GetString() })); } catch { } }
             }
             if (!string.IsNullOrWhiteSpace(payload.Text))
             {
-                const string focus = "(()=>{const e=document.querySelector('textarea:not([disabled]),[contenteditable=true][role=textbox],[contenteditable=true]');if(!e)return false;e.focus();if(e.setSelectionRange)e.setSelectionRange(e.value.length,e.value.length);else{const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r);}return true;})()";
+                const string focus = DropWebScripts.FocusEditor;
                 using var result = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = focus, returnByValue = true })));
-                if (!result.RootElement.GetProperty("result").TryGetProperty("value", out var value) || !value.GetBoolean()) throw new IOException("网页输入框未就绪；请打开对话输入框后重试，文字仍保留。");
-                await core.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = payload.Text })); payload.Text = "";
+                if (!result.RootElement.GetProperty("result").TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.String) throw new IOException("网页输入框未就绪；请打开对话输入框后重试，文字仍保留。");
+                await core.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = (value.GetString() == "newline" && !payload.Text.StartsWith("\n") ? "\n" : "") + payload.Text })); payload.Text = "";
             }
             ClearDropInbox(); SetStatus("已交给当前网站，文字放入草稿；请在网页中确认内容后发送。");
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { SetStatus((pendingFilesDelivered ? "附件已交给网站；剩余步骤未完成：" : "未完成：") + ex.Message); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { RenderDropInbox(); SetStatus((pendingFilesDelivered ? "附件已交给网站；剩余步骤未完成：" : "未完成：") + ex.Message); }
         finally { transferringDrop = false; }
     }
 }

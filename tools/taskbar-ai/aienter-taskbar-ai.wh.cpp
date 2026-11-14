@@ -22,6 +22,8 @@
 // ==/WindhawkModSettings==
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <knownfolders.h>
 #include <windhawk_utils.h>
 #undef GetCurrentTime
 #include <winrt/Windows.Foundation.h>
@@ -34,8 +36,13 @@
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Storage.h>
+#include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.Data.Json.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
@@ -619,8 +626,9 @@ static AppearanceState ReadAppearance() {
     return state;
 }
 static std::thread g_worker;
-static std::wstring g_executable;
+static std::wstring g_executable, g_verifyDropDirectory;
 static std::atomic<bool> g_unloading{false};
+static std::atomic<int> g_pendingDrops{0};
 // XAML references must be released on the taskbar thread, never at DLL teardown.
 struct AttachedButton {
     controls::Panel parent{nullptr};
@@ -631,7 +639,11 @@ struct AttachedButton {
     winrt::event_token artworkOpened{}, artworkFailed{};
     int lastX = -1, lastRight = -1, lastWidth = -1;
     slot::Lease lease;
-    winrt::event_token click{}, rightTap{}, layout{};
+    winrt::event_token click{}, rightTap{}, layout{}, dragEnter{}, dragOver{}, dragLeave{}, drop{}, hoverTick{};
+    xaml::DispatcherTimer hoverTimer{nullptr};
+    xaml::Media::Brush normalBorder{nullptr};
+    xaml::Thickness normalThickness{};
+    bool dragging = false;
 };
 static AttachedButton* g_attached = nullptr;
 static void LogFailure(PCWSTR context);
@@ -670,7 +682,7 @@ static void ApplyAppearanceState(void* parameter) {
 }
 
 
-static void LaunchAi(bool settings = false) {
+static void LaunchAiCommand(PCWSTR command) {
     if (g_unloading) return;
     if (GetFileAttributesW(g_executable.c_str()) == INVALID_FILE_ATTRIBUTES) {
         Wh_Log(L"AIEnter executable is missing: %s", g_executable.c_str());
@@ -680,9 +692,133 @@ static void LaunchAi(bool settings = false) {
     SHELLEXECUTEINFOW info{sizeof(info)};
     info.fMask = SEE_MASK_FLAG_NO_UI;
     info.lpFile = g_executable.c_str();
-    info.lpParameters = settings ? L"--settings" : L"--ai-only";
+    std::wstring parameters(command);
+    if (!g_verifyDropDirectory.empty()) parameters += L" --verify-drop-entry --data-dir \"" + g_verifyDropDirectory + L"\"";
+    info.lpParameters = parameters.c_str();
     info.nShow = SW_SHOWNORMAL;
     if (!ShellExecuteExW(&info)) Wh_Log(L"AI launch failed: %u", GetLastError());
+}
+
+
+static void LaunchAi(bool settings = false) { LaunchAiCommand(settings ? L"--settings" : L"--ai-only"); }
+namespace transfer = winrt::Windows::ApplicationModel::DataTransfer;
+namespace storage = winrt::Windows::Storage;
+namespace json = winrt::Windows::Data::Json;
+static std::wstring DropRoot() {
+    if (!g_verifyDropDirectory.empty()) { auto root = g_verifyDropDirectory + L"\\incoming-drops"; CreateDirectoryW(root.c_str(), nullptr); return root; }
+    PWSTR path = nullptr;
+    winrt::check_hresult(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &path));
+    std::wstring root(path); CoTaskMemFree(path);
+    root += L"\\AIEnter"; CreateDirectoryW(root.c_str(), nullptr);
+    root += L"\\incoming-drops"; CreateDirectoryW(root.c_str(), nullptr); return root;
+}
+static std::string ReadLocalFile(std::wstring const& path) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return {};
+    DWORD size = GetFileSize(file, nullptr);
+    if (size == INVALID_FILE_SIZE || size > 16 * 1024 * 1024) { CloseHandle(file); return {}; }
+    std::string data(size, '\0'); DWORD read = 0; BOOL ok = ReadFile(file, data.data(), size, &read, nullptr); CloseHandle(file);
+    if (!ok) return {}; data.resize(read); return data;
+}
+static winrt::hstring CurrentDropProvider() {
+    try {
+        auto root = DropRoot(); root.resize(root.size() - std::wstring(L"\\incoming-drops").size());
+        auto data = ReadLocalFile(root + L"\\ai.json");
+        if (!data.empty()) return json::JsonObject::Parse(winrt::to_hstring(data)).GetNamedString(L"Provider", L"");
+    } catch (...) {} return L"";
+}
+static bool DropSupported(transfer::DataPackageView const& data) {
+    return data.Contains(transfer::StandardDataFormats::StorageItems()) || data.Contains(transfer::StandardDataFormats::WebLink())
+        || data.Contains(transfer::StandardDataFormats::Text()) || data.Contains(transfer::StandardDataFormats::Bitmap());
+}
+static void ResetDropVisual() {
+    if (!g_attached) return;
+    auto& state = *g_attached;
+    if (state.hoverTimer) state.hoverTimer.Stop();
+    state.button.BorderBrush(state.normalBorder); state.button.BorderThickness(state.normalThickness); state.dragging = false;
+}
+static void OverTaskbar(xaml::DragEventArgs const& args) {
+    if (g_unloading || !g_attached || !DropSupported(args.DataView())) return;
+    args.Handled(true); args.AcceptedOperation(transfer::DataPackageOperation::Copy);
+    args.DragUIOverride().Caption(L"放入当前 AI，不自动发送"); args.DragUIOverride().IsCaptionVisible(true);
+    if (!g_attached->dragging) {
+        g_attached->dragging = true; g_attached->hoverTimer.Start();
+        g_attached->button.BorderThickness({2, 2, 2, 2});
+        g_attached->button.BorderBrush(xaml::Media::SolidColorBrush(winrt::Windows::UI::Color{255, 30, 180, 230}));
+    }
+}
+static void WritePacket(std::wstring const& root, std::wstring const& id, json::JsonObject const& packet) {
+    auto text = winrt::to_string(packet.Stringify());
+    std::wstring temporary = root + L"\\" + id + L".tmp", final = root + L"\\" + id + L".json";
+    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) winrt::throw_last_error();
+    DWORD written = 0; BOOL ok = WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+    FlushFileBuffers(file); CloseHandle(file);
+    if (!ok || written != text.size() || !MoveFileExW(temporary.c_str(), final.c_str(), MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary.c_str()); winrt::throw_last_error();
+    }
+}
+static winrt::fire_and_forget DropOnTaskbar(xaml::DragEventArgs args) {
+    if (g_unloading || !DropSupported(args.DataView())) co_return;
+    ++g_pendingDrops;
+    auto deferral = args.GetDeferral();
+    args.Handled(true); args.AcceptedOperation(transfer::DataPackageOperation::Copy); ResetDropVisual();
+    std::wstring root, id, batch;
+    std::vector<std::wstring> owned;
+    auto provider = CurrentDropProvider();
+    try {
+        root = DropRoot(); GUID guid{}; winrt::check_hresult(CoCreateGuid(&guid)); WCHAR name[40]; StringFromGUID2(guid, name, ARRAYSIZE(name));
+        id = std::wstring(name + 1, 36); batch = root + L"\\" + id; CreateDirectoryW(batch.c_str(), nullptr);
+        auto folder = co_await storage::StorageFolder::GetFolderFromPathAsync(batch);
+        auto data = args.DataView(); json::JsonObject packet; json::JsonArray files, ownedFiles;
+        packet.SetNamedValue(L"version", json::JsonValue::CreateNumberValue(1)); packet.SetNamedValue(L"provider", json::JsonValue::CreateStringValue(provider));
+        winrt::hstring text;
+        bool bitmapOnly = data.Contains(transfer::StandardDataFormats::Bitmap()) && !data.Contains(transfer::StandardDataFormats::StorageItems());
+        if (!bitmapOnly && data.Contains(transfer::StandardDataFormats::WebLink())) text = (co_await data.GetWebLinkAsync()).AbsoluteUri();
+        else if (!bitmapOnly && data.Contains(transfer::StandardDataFormats::Text())) text = co_await data.GetTextAsync();
+        std::wstring value(text);
+        bool link = (value.starts_with(L"https://") || value.starts_with(L"http://")) && value.find_first_of(L"\r\n") == std::wstring::npos;
+        if (!link && data.Contains(transfer::StandardDataFormats::StorageItems())) {
+            text = L""; auto items = co_await data.GetStorageItemsAsync();
+            if (items.Size() > 12) throw winrt::hresult_invalid_argument(L"一次最多拖入 12 个文件。");
+            for (auto const& item : items) {
+                if (!item.IsOfType(storage::StorageItemTypes::File)) throw winrt::hresult_invalid_argument(L"不支持拖入文件夹。");
+                auto path = item.Path();
+                if (path.empty()) {
+                    auto copied = co_await item.as<storage::StorageFile>().CopyAsync(folder, L"附件_" + item.Name(), storage::NameCollisionOption::GenerateUniqueName);
+                    path = copied.Path(); owned.emplace_back(path); ownedFiles.Append(json::JsonValue::CreateStringValue(path));
+                }
+                files.Append(json::JsonValue::CreateStringValue(path));
+            }
+        } else if (bitmapOnly) {
+            auto reference = co_await data.GetBitmapAsync(); auto stream = co_await reference.OpenReadAsync();
+            if (stream.Size() > 32 * 1024 * 1024) throw winrt::hresult_invalid_argument(L"图片超过 32 MB。");
+            auto reader = winrt::Windows::Storage::Streams::DataReader(stream.GetInputStreamAt(0));
+            co_await reader.LoadAsync(static_cast<uint32_t>(stream.Size()));
+            std::vector<uint8_t> bytes(static_cast<size_t>(stream.Size())); reader.ReadBytes(bytes);
+            auto file = co_await folder.CreateFileAsync(L"image.source", storage::CreationCollisionOption::FailIfExists);
+            co_await storage::FileIO::WriteBytesAsync(file, bytes);
+            owned.emplace_back(file.Path()); ownedFiles.Append(json::JsonValue::CreateStringValue(file.Path()));
+            packet.SetNamedValue(L"bitmap", json::JsonValue::CreateStringValue(file.Path()));
+        }
+        if (text.size() > 20000) throw winrt::hresult_invalid_argument(L"文字最多 20000 字。");
+        packet.SetNamedValue(L"text", json::JsonValue::CreateStringValue(text)); packet.SetNamedValue(L"files", files); packet.SetNamedValue(L"ownedFiles", ownedFiles);
+        WritePacket(root, id, packet); Wh_SetIntValue(L"TaskbarDropQueued", Wh_GetIntValue(L"TaskbarDropQueued", 0) + 1);
+        LaunchAiCommand(L"--taskbar-drop");
+    } catch (...) {
+        auto error = winrt::to_hresult(); Wh_SetIntValue(L"TaskbarDropError", error);
+        for (auto const& path : owned) DeleteFileW(path.c_str());
+        if (!batch.empty()) RemoveDirectoryW(batch.c_str());
+        try {
+            if (!root.empty() && !id.empty()) {
+                json::JsonObject packet;
+                packet.SetNamedValue(L"error", json::JsonValue::CreateStringValue(L"无法读取拖入内容，请直接拖入 AI 窗口或先保存文件到本机。"));
+                packet.SetNamedValue(L"provider", json::JsonValue::CreateStringValue(provider));
+                WritePacket(root, id, packet); LaunchAiCommand(L"--taskbar-drop");
+            }
+        } catch (...) {}
+    }
+    deferral.Complete(); --g_pendingDrops;
 }
 
 static xaml::FrameworkElement FindElement(xaml::DependencyObject const& root,
@@ -704,6 +840,10 @@ static void RemoveButton() {
     if (state.button) {
         state.artwork.ImageOpened(state.artworkOpened);
         state.artwork.ImageFailed(state.artworkFailed);
+        ResetDropVisual();
+        state.button.DragEnter(state.dragEnter); state.button.DragOver(state.dragOver);
+        state.button.DragLeave(state.dragLeave); state.button.Drop(state.drop);
+        if (state.hoverTimer) { state.hoverTimer.Stop(); state.hoverTimer.Tick(state.hoverTick); }
         state.button.Click(state.click);
         state.button.RightTapped(state.rightTap);
         state.button.LayoutUpdated(state.layout);
@@ -714,7 +854,7 @@ static void RemoveButton() {
     slot::Release(state.parent, state.lease);
     delete g_attached;
     g_attached = nullptr;
-    Wh_SetIntValue(L"ButtonAttached", 0);
+    Wh_SetIntValue(L"ButtonAttached", 0); Wh_SetIntValue(L"TaskbarDropEnabled", 0);
 }
 
 static void AttachButton(void* parameter) {
@@ -776,6 +916,15 @@ static void AttachButton(void* parameter) {
         slot::Release(parent, state->lease); delete state; throw;
     }
     g_attached = state;
+    state->normalBorder = button.BorderBrush(); state->normalThickness = button.BorderThickness();
+    state->hoverTimer = xaml::DispatcherTimer(); state->hoverTimer.Interval(std::chrono::milliseconds(450));
+    state->hoverTick = state->hoverTimer.Tick([](auto&&, auto&&) { if (g_attached) g_attached->hoverTimer.Stop(); if (!g_unloading) LaunchAiCommand(L"--drag-hover"); });
+    button.AllowDrop(true);
+    state->dragEnter = button.DragEnter([](auto&&, xaml::DragEventArgs const& args) { OverTaskbar(args); });
+    state->dragOver = button.DragOver([](auto&&, xaml::DragEventArgs const& args) { OverTaskbar(args); });
+    state->dragLeave = button.DragLeave([](auto&&, auto&&) { ResetDropVisual(); });
+    state->drop = button.Drop([](auto&&, xaml::DragEventArgs const& args) { DropOnTaskbar(args); });
+    Wh_SetIntValue(L"TaskbarDropEnabled", 1);
     UpdateButtonAppearance();
     state->artwork = artwork;
     state->artworkOpened = artwork.ImageOpened([](auto&& source, auto&&) {
@@ -830,10 +979,22 @@ static void Rebuilt() {
 
 BOOL Wh_ModInit() {
     Wh_SetIntValue(L"ButtonAttached", 0);
+    Wh_SetIntValue(L"TaskbarDropEnabled", 0);
     Wh_SetIntValue(L"ArtworkLoaded", 0);
     auto executable = Wh_GetStringSetting(L"executable");
     g_executable = executable; Wh_FreeStringSetting(executable);
     if (g_executable.empty() || GetFileAttributesW(g_executable.c_str()) == INVALID_FILE_ATTRIBUTES) return FALSE;
+    auto verify = Wh_GetStringSetting(L"verifyDataDirectory");
+    std::wstring requested = verify ? verify : L""; if (verify) Wh_FreeStringSetting(verify);
+    if (!requested.empty()) {
+        wchar_t full[32768]; DWORD length = GetFullPathNameW(requested.c_str(), ARRAYSIZE(full), full, nullptr);
+        auto parent = g_executable.substr(0, g_executable.find_last_of(L"\\/"));
+        parent = parent.substr(0, parent.find_last_of(L"\\/")) + L"\\.build\\";
+        DWORD attributes = length && length < ARRAYSIZE(full) ? GetFileAttributesW(full) : INVALID_FILE_ATTRIBUTES;
+        if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) && !(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+            && _wcsnicmp(full, parent.c_str(), parent.size()) == 0) g_verifyDropDirectory = full;
+    }
+
     dispatch::SetExceptionLogger(LogFailure);
     if (!taskbar::HookTaskbarSymbols(Rebuilt)) return FALSE;
     g_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -906,6 +1067,7 @@ void Wh_ModUninit() {
     g_unloading = true;
     if (g_stop) SetEvent(g_stop);
     if (g_worker.joinable()) g_worker.join();
+    while (g_pendingDrops.load() > 0) Sleep(20);
     auto window = folder_menus_taskbar_window::FindCurrentProcessTaskbarWnd();
     if (window) dispatch::RunFromWindowThread(window, [](void*) { RemoveButton(); }, nullptr, L"AIEnter.TaskbarAi.Dispatch");
     if (g_stop) CloseHandle(g_stop);

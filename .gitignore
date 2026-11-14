@@ -16,3 +16,8 @@ ai.json.bak
 *.pfx
 *.p12
 **/WebView2/
+
+**/incoming-drops/
+**/drop-files/
+**/drop-images/
+**/AiWebProfiles/

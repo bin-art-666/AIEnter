@@ -98,7 +98,7 @@ internal abstract class PanelWindow : Window
     internal void ConfirmIncomingDrop()
     {
         if (closed || !IsOpen) return;
-        var lease = KeepOpen(); ShowPanel();
+        var lease = KeepOpenForDrag(); ShowPanel();
         if (!DispatcherQueue.TryEnqueue(async () => { try { await Task.Delay(350); } finally { lease.Dispose(); } })) lease.Dispose();
     }
     protected IDisposable KeepOpen()

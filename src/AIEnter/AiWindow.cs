@@ -107,13 +107,14 @@ internal sealed partial class AiWindow : PanelWindow
         var shell = new Grid(); shell.Children.Add(backplate); shell.Children.Add(root); InitializeDockResize(shell);
         InitializePanel(new Border { Background = new SolidColorBrush(Colors.Transparent), Child = shell,
             CornerRadius = new CornerRadius(App.Appearance.BackplateRadius) });
-        InitializeBackplateCorners(); ApplyOptions();
+        InitializeBackplateCorners(); InitializeDropTarget(); ApplyOptions();
     }
     static FontIcon Glyph(string value) => PanelTheme.Glyph(value);
     static void Style(ButtonBase button, string name) => PanelTheme.FramedIconStyle(button, name);
     static Button Icon(string value, string name) => AiControls.IconButton(value,name);
     Microsoft.UI.Dispatching.DispatcherQueueTimer transientStatusTimer = null!;
     StackPanel statusHost = null!;
+    internal void ReportDropError(string text) => SetStatus(text);
     void SetStatus(string text)
     {
         if (destroyed) return;
@@ -170,12 +171,12 @@ internal sealed partial class AiWindow : PanelWindow
         ToolTipService.SetToolTip(pin, options.Data.Pinned ? "取消固定" : "固定 AI 面板");
         ((OverlappedPresenter)AppWindow.Presenter).IsAlwaysOnTop = !Detached || options.Data.Pinned;
     }
-    internal async Task Open(DesktopMonitor monitor, int top)
+    internal async Task Open(DesktopMonitor monitor, int top, bool activate = true)
     {
         display = monitor; dockTop = top;
         dockPlacement = null; // Each entry opens at the work area bottom-right; old top offsets are ignored.
         if (!Detached) Position(); else ClampFloating();
-        ShowPanel(); RefreshBackplateCorners(); await ShowSelected();
+        ShowPanel(activate); RefreshBackplateCorners(); await ShowSelected();
     }
     async Task ShowSelected()
     {
@@ -208,7 +209,7 @@ internal sealed partial class AiWindow : PanelWindow
             Configure(page.View, page);
             await MaskBrowser(page.View);
             await page.View.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync("window.addEventListener('dragover',e=>e.preventDefault(),true);window.addEventListener('drop',e=>{e.preventDefault();e.stopImmediatePropagation();},true);");
-            if (verification) page.View.NavigateToString("<!doctype html><html><meta charset='utf-8'><style>body{font:16px system-ui;padding:20px;background:#eef5fa}textarea{width:90%;height:180px;padding:10px;font:16px system-ui}</style><h2>AI 面板测试页</h2><p>仅本机测试，不连接 AI 网站。</p><textarea id='draft'>保留我的草稿</textarea></html>");
+            if (verification) page.View.NavigateToString("<!doctype html><html><meta charset='utf-8'><style>body{font:16px system-ui;padding:20px;background:#eef5fa}textarea{width:90%;height:180px;padding:10px;font:16px system-ui}</style><h2>AI 面板测试页</h2><p>仅本机测试，不连接 AI 网站。</p><textarea id='draft'>保留我的草稿</textarea><p><input id='attachments' type='file' multiple></p><p><a id='drag-source' href='https://example.invalid/drag-fixture'>拖动测试链接</a></p></html>");
             else page.View.CoreWebView2.Navigate(page.Endpoint.Url);
             if (!IsOpen) MemoryTarget(page.View, true);
         }
@@ -217,6 +218,7 @@ internal sealed partial class AiWindow : PanelWindow
     }
     void Configure(WebView2 view, Page page)
     {
+        AttachDropTarget(view);
         var core = view.CoreWebView2; core.Settings.IsStatusBarEnabled = false;
         core.NewWindowRequested += async (_, args) =>
         {

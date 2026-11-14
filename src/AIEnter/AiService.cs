@@ -26,6 +26,14 @@ internal sealed class AiService
         window ??= new AiWindow(Options, directory, display, () => Changed?.Invoke(), verification);
         await window.Open(display, top ?? display.Info.Work.Top);
     }
+    internal async Task OpenForDrop(DesktopMonitor display, bool activate)
+    {
+        if (SessionState.Locked == true) return;
+        window ??= new AiWindow(Options, directory, display, () => Changed?.Invoke(), verification);
+        if (activate) await window.Open(display, display.Info.Work.Top, true); else await window.OpenForDragHover(display);
+    }
+    internal Task<bool> ReceivePayload(DropPayload payload, string provider) => window?.ReceivePayload(payload, provider) ?? Task.FromResult(false);
+    internal void DropError(string text) => window?.ReportDropError(text);
     internal void Hide(bool includeDetached = true) { if (includeDetached) window?.Hide(); else window?.HideDocked(); }
     internal async Task OpenPreferred(DesktopMonitor display)
     {
