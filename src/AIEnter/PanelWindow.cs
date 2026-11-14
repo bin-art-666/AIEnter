@@ -11,6 +11,10 @@ internal abstract class PanelWindow : Window
     protected void NotifyPresentationChanged() => PresentationChanged?.Invoke();
     long activationVersion;
     bool closed;
+    long hideVersion;
+    CancellationTokenSource? hideCancellation;
+    internal bool IsClosing { get; private set; }
+    protected virtual bool FloatFadeMotion => false;
     int modalDepth;
     int dragDepth;
     uint outsidePressTime;
@@ -48,7 +52,7 @@ internal abstract class PanelWindow : Window
             });
         };
         AppWindow.Closing += (_, args) => { if (!closed) { args.Cancel = true; Hide(); } };
-        Closed += (_, _) => { closed = true; IsOpen = false; activationVersion++; outsideClicks?.Dispose(); caption?.Dispose(); PanelTheme.Unregister(this); NotifyPresentationChanged(); };
+        Closed += (_, _) => { closed = true; CancelPendingHide(); IsOpen = false; activationVersion++; outsideClicks?.Dispose(); caption?.Dispose(); PanelTheme.Unregister(this); NotifyPresentationChanged(); };
     }
 
     protected void InitializePanel(FrameworkElement content)
@@ -66,14 +70,16 @@ internal abstract class PanelWindow : Window
 
     protected void ShowPanel(bool activate = true)
     {
-        bool entering = !IsOpen;
+        bool entering = !IsOpen, resume = IsClosing;
+        CancelPendingHide();
         PanelTheme.Refresh(this);
         activationVersion++;
         IsOpen = true; hasOutsidePress = false;
         // Activate alone is not a reliable way to re-show an AppWindow that was
         // explicitly hidden, especially after a non-activating drag-hover open.
+        if (entering && FloatFadeMotion && Content is FrameworkElement content) PanelMotion.Enter(content, true, resume);
         AppWindow.Show(false);
-        if (entering && Content is FrameworkElement content) PanelMotion.Enter(content);
+        if (entering && !FloatFadeMotion && Content is FrameworkElement legacyContent) PanelMotion.Enter(legacyContent);
         if (activate) Activate();
         if (Frameless) Native.RemoveWindowFrame(WinRT.Interop.WindowNative.GetWindowHandle(this));
         caption?.Queue();
@@ -95,12 +101,46 @@ internal abstract class PanelWindow : Window
         try { OnHiding(); }
         finally
         {
-            AppWindow.Hide();
-            if (Content is FrameworkElement content) PanelMotion.Reset(content);
             NotifyPresentationChanged();
+            int duration = FloatFadeMotion && AppWindow.IsVisible && Content is FrameworkElement element
+                && ((Microsoft.UI.Windowing.OverlappedPresenter)AppWindow.Presenter).State != Microsoft.UI.Windowing.OverlappedPresenterState.Minimized
+                ? PanelMotion.Exit(element) : 0;
+            if (duration > 0)
+            {
+                IsClosing = true;
+                ((UIElement)Content).IsHitTestVisible = false;
+                Native.EnableWindow(WinRT.Interop.WindowNative.GetWindowHandle(this), false);
+                hideCancellation = new();
+                _ = FinishHide(++hideVersion, duration, hideCancellation.Token);
+            }
+            else HideImmediately();
         }
     }
+    async Task FinishHide(long version, int duration, CancellationToken cancellation)
+    {
+        try { await Task.Delay(duration, cancellation); }
+        catch (OperationCanceledException) { return; }
+        if (!closed && version == hideVersion && !IsOpen) HideImmediately();
+    }
+    void CancelPendingHide()
+    {
+        hideVersion++; hideCancellation?.Cancel(); hideCancellation?.Dispose(); hideCancellation = null;
+        if (IsClosing && !closed)
+        {
+            ((UIElement)Content).IsHitTestVisible = true;
+            Native.EnableWindow(WinRT.Interop.WindowNative.GetWindowHandle(this), true);
+        }
+        IsClosing = false;
+    }
+    void HideImmediately()
+    {
+        AppWindow.Hide();
+        CancelPendingHide();
+        if (Content is FrameworkElement content) PanelMotion.Reset(content);
+        OnHidden();
+    }
 
+    protected virtual void OnHidden() { }
     protected virtual void OnHiding() { }
     internal void ConfirmIncomingDrop()
     {
@@ -127,6 +167,6 @@ internal abstract class PanelWindow : Window
     {
         if (closed) return;
         try { Hide(); }
-        finally { closed = true; outsideClicks?.Dispose(); Close(); }
+        finally { CancelPendingHide(); closed = true; outsideClicks?.Dispose(); Close(); }
     }
 }

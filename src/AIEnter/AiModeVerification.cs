@@ -162,8 +162,9 @@ internal sealed partial class AiWindow
         await CheckDraft();
         await VerifyMultipleProviders(); await CheckDraft();
         await VerifyToggleModes(); await CheckDraft();
+        await VerifyFloatFadeMotion(); await CheckDraft();
         await VerifyDropInputs(); await CheckDraft();
-        return new { passed = true, localPageOnly = true, taskbarToggle = true, minimizedRestore = true, sameGestureDismissal = true, windowDrop = true, resizedDrop = true, expandedDrop = true, bitmapDrop = true, taskbarPacket = true, currentAiDropTarget = true, noAutoSend = true, dropRetryPreserved = true, sameBrowser = true, draftPreserved = true, multipleProviders = true, addedDraftsPreserved = true, lazyProviderLoading = true, removedProviderFallback = true,
+        return new { passed = true, localPageOnly = true, floatFadeMotion = true, exitReopenCancellation = true, exitInputDisabled = true, reducedMotion = true, taskbarToggle = true, minimizedRestore = true, sameGestureDismissal = true, windowDrop = true, resizedDrop = true, expandedDrop = true, bitmapDrop = true, taskbarPacket = true, currentAiDropTarget = true, noAutoSend = true, dropRetryPreserved = true, sameBrowser = true, draftPreserved = true, multipleProviders = true, addedDraftsPreserved = true, lazyProviderLoading = true, removedProviderFallback = true,
             independentMode = true, floatingMode = true, hiddenSettingsStayHidden = true, nativeHeaderDrag = true, headerButtonsRemainInteractive = true,
             buttonColorPreview = true, buttonColorRollback = true, providerOrder = true, providerOverflowOrder = true, flushConversationEdges = true, headerOnlyGlass = true, fullContentCornerClip = true, transparentWindowCanvas = true, boundedGlassCorners = true, consistentModeCorners = true, expandedResizeEdges = true, expandedResizeClip = true, backplateCorners = true, backplatePreviewRollback = true, compactToolbar = true, hiddenFooter = true, maximumAppearanceOnNarrowWindow = true, previewRollback = true,
             bottomRight = true, legacyOffsetIgnored = true, resizeOppositeEdge = true, reanchorsOnOpen = true };

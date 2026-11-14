@@ -3,6 +3,9 @@ namespace AIEnter;
 // Approved defaults captured from saved UI preferences. Only public AI entry URLs; no credentials, browser data or screen positions.
 internal static class UiDefaults
 {
+    internal const int PanelEnterMilliseconds = 180;
+    internal const int PanelExitMilliseconds = 130;
+    internal const int PanelMotionOffset = 16;
     internal const int ButtonRadius = 16;
     internal const int ButtonSize = 30;
     internal const int WindowPadding = 4;

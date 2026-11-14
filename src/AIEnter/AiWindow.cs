@@ -39,6 +39,7 @@ internal sealed partial class AiWindow : PanelWindow
     internal string Status => status.Text;
     internal string DisplayDevice => display.Device;
     protected override bool DismissOnOutside => !Detached && pin.IsChecked != true;
+    protected override bool FloatFadeMotion => true;
     protected override bool Frameless => !Detached;
     sealed class Page(AiEndpoint endpoint)
     {
@@ -274,8 +275,11 @@ internal sealed partial class AiWindow : PanelWindow
     protected override void OnHiding()
     {
         SaveFloating();
-        foreach (var page in pages.Values) MemoryTarget(page.View, true);
         changed();
+    }
+    protected override void OnHidden()
+    {
+        foreach (var page in pages.Values) MemoryTarget(page.View, true);
     }
     internal void ToggleDetached()
     {

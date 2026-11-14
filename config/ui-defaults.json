@@ -43,5 +43,9 @@
       "Url": "https://www.kimi.com/en"
     }
   ],
-  "DefaultProvider": "deepseek"
+  "DefaultProvider": "deepseek",
+  "PanelAnimation": "FloatFade",
+  "PanelEnterMilliseconds": 180,
+  "PanelExitMilliseconds": 130,
+  "PanelMotionOffset": 16
 }
