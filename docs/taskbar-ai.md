@@ -113,3 +113,7 @@ AI 窗口原生区域随实际尺寸、DPI、模式与外观更新，四角同�
 ## 四角玻璃残留修复
 AI 窗口的 SystemBackdrop 只提供完全透明的画布，玻璃材质移入背景层 SystemBackdropElement，并与背板设置共享 CornerRadius。玻璃从源头限制在圆角元素内，避免窗口级材质在原生窗口圆角外留下矩形淡色残影；设置窗口沿用原有材质。主题刷新保持透明画布，不将全窗口亚克力重新加回。悬浮／展开模式及 DPI、尺寸变动仍同步原生圆角与元素圆角。
 验收：.build/glass-corner-check-20261114-145009/mode-result.json 检查透明画布、玻璃元素边界、圆角、展开缩放、拖动、模式与草稿；实际观察悬浮和展开界面。
+
+### 完整内容合成层裁切
+用户反馈局部玻璃圆角仍有浅色残留，因此在整个 AI 内容外增加透明圆角 Border，并对其 composition visual 设置完整 rounded-rectangle geometric clip。玻璃、网页、工具栏和其他子层共享这个最终轮廓，尺寸与外观变动时同步更新；原生窗口区域仍负责窗口命中。透明画布验证改为检查实际颜色 alpha=0 且无全窗口 acrylic controller。
+验收：.build/full-corner-clip-20261114-145527/mode-result.json 检查完整内容层 clip 的尺寸和半径、透明画布、玻璃层、双模式、缩放、拖动和多 AI 草稿保持。已加载修正版并观察展开窗口。

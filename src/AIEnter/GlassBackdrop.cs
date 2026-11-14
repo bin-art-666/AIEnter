@@ -27,6 +27,7 @@ public sealed class GlassBackdrop : SystemBackdrop
     Windows.UI.Composition.Compositor? transparentCompositor;
     Windows.UI.Composition.CompositionColorBrush? transparentBrush;
     TransparentWindowFrame? transparentFrame;
+    internal bool IsClearCanvas => TransparentCanvas && transparentBrush?.Color.A == 0 && controller == null;
     internal bool IsNoBaseActive => material.NoBase && transparentBrush != null;
     internal bool IsReady => material.NoBase ? transparentBrush != null : controller != null || !DesktopAcrylicController.IsSupported();
     internal int ConnectionCount { get; private set; }

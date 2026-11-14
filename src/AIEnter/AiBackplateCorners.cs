@@ -17,6 +17,7 @@ internal sealed partial class AiWindow
             if (args.DidSizeChange || args.DidPositionChange) RefreshBackplateCorners();
         };
         root.Loaded += (_, _) => RefreshBackplateCorners();
+        ((FrameworkElement)Content).SizeChanged += (_, _) => RefreshBackplateCorners();
         Closed += (_, _) => PanelTheme.Changed -= RefreshBackplateCorners;
         RefreshBackplateCorners();
     }
@@ -29,6 +30,18 @@ internal sealed partial class AiWindow
         int radius = Math.Min(Math.Min(width, height) / 2,
             (int)Math.Round(App.Appearance.BackplateRadius * Native.GetDpiForWindow(handle) / 96d));
         root.CornerRadius = backplate.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
+        // Grid.CornerRadius only rounds its own paint. Clip the complete content
+        // visual so external glass and WebView composition layers cannot leak.
+        var host = (Microsoft.UI.Xaml.Controls.Border)Content;
+        host.CornerRadius = root.CornerRadius;
+        if (host.ActualWidth > 0 && host.ActualHeight > 0)
+        {
+            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(host);
+            var geometry = visual.Compositor.CreateRoundedRectangleGeometry();
+            geometry.Size = new System.Numerics.Vector2((float)host.ActualWidth, (float)host.ActualHeight);
+            geometry.CornerRadius = new System.Numerics.Vector2((float)App.Appearance.BackplateRadius);
+            visual.Clip = visual.Compositor.CreateGeometricClip(geometry);
+        }
         if (backplateShape == (width, height, radius)) return;
         // Clip the native window as well as its XAML content: acrylic must not
         // remain visible behind the transparent corners. Windows owns a set HRGN.
@@ -43,12 +56,18 @@ internal sealed partial class AiWindow
     }
     internal void VerifyBackplateCorners()
     {
-        if (SystemBackdrop is not GlassBackdrop { TransparentCanvas: true, IsNoBaseActive: true })
+        if (SystemBackdrop is not GlassBackdrop { TransparentCanvas: true, IsClearCanvas: true })
             throw new Exception("Window canvas still paints a rectangular glass backdrop.");
         if (backplate.SystemBackdrop is not GlassBackdrop { IsReady: true } || backplate.CornerRadius.TopLeft != App.Appearance.BackplateRadius)
             throw new Exception("Glass material is not bound to the rounded backplate element.");
         if (Math.Abs(backplate.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1 || Math.Abs(backplate.ActualHeight - ((FrameworkElement)Content).ActualHeight) > 1)
             throw new Exception("Rounded glass does not fill the window client area.");
+        var host = (Microsoft.UI.Xaml.Controls.Border)Content;
+        var clip = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(host).Clip as Microsoft.UI.Composition.CompositionGeometricClip;
+        var rounded = clip?.Geometry as Microsoft.UI.Composition.CompositionRoundedRectangleGeometry;
+        if (rounded == null || rounded.CornerRadius.X != App.Appearance.BackplateRadius
+            || Math.Abs(rounded.Size.X - host.ActualWidth) > 1 || Math.Abs(rounded.Size.Y - host.ActualHeight) > 1)
+            throw new Exception("The full content composition layer is not clipped to the rounded silhouette.");
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var origin = new Native.Point(); ClientToScreen(handle, ref origin);
         GetBackplateWindowRect(handle, out var bounds); GetBackplateClientRect(handle, out var client);

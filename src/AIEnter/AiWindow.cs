@@ -103,7 +103,9 @@ internal sealed partial class AiWindow : PanelWindow
         AppWindow.Changed += (_, e) => { if (Detached && !destroyed && (e.DidPositionChange || e.DidSizeChange)) { saveTimer.Stop(); saveTimer.Start(); } };
         Closed += (_, _) => { destroyed = true; EndDockResize(true); saveTimer.Stop(); transientStatusTimer.Stop(); ClosePopup(); foreach (var page in pages.Values) page.View.Close(); pages.Clear(); };
         var shell = new Grid(); shell.Children.Add(backplate); shell.Children.Add(root); InitializeDockResize(shell);
-        InitializePanel(shell); InitializeBackplateCorners(); ApplyOptions();
+        InitializePanel(new Border { Background = new SolidColorBrush(Colors.Transparent), Child = shell,
+            CornerRadius = new CornerRadius(App.Appearance.BackplateRadius) });
+        InitializeBackplateCorners(); ApplyOptions();
     }
     static FontIcon Glyph(string value) => PanelTheme.Glyph(value);
     static void Style(ButtonBase button, string name) => PanelTheme.FramedIconStyle(button, name);
