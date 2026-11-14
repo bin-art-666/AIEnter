@@ -12,6 +12,8 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 - 任务栏圆形图标支持大小调节，对话打开时显示可调光晕。图标位于时间与“显示桌面”区域之间。
 - 外观实时预览，保存后记住，关闭设置撤销未保存的预览。
 
+默认外观：面板 401×849 DIP，网页圆角 28 DIP、背板圆角 24 DIP；图标 26 DIP，光晕范围 9 DIP、强度 77%；普通按钮为半透明青色，选中按钮为亮青色。顶栏默认顺序为 DeepSeek、ChatGPT、豆包、小艺。完整清单见 [UI 默认值](config/ui-defaults.json)。已有显式设置不被覆盖。
+
 本项目嵌入 AI 官方网页，首次使用请自行登录；不需要在应用中配置 API 密钥。账号、网页登录资料和设置保存在本机 `%LOCALAPPDATA%\AIEnter`，不随源码上传。
 
 ## 构建与运行
@@ -63,7 +65,7 @@ dotnet run --project tests\AiChecks --configuration Release
 .\dist\AIEnter.exe --verify-ai-modes --data-dir .build\mode-check
 ```
 
-结果写入指定目录的 `mode-result.json`。最新本机验收包括 101 项配置与几何检查，以及原生窗口模式和颜色预览检查。
+结果写入指定目录的 `mode-result.json`。最新本机验收包括 103 项配置与几何检查，以及原生窗口模式和颜色预览检查。
 
 ## 兼容性与来源
 

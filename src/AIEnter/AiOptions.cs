@@ -10,17 +10,17 @@ internal sealed record AiEndpoint(string Name, string Url)
 }
 internal sealed record AiBounds(int X, int Y, int Width, int Height);
 internal enum AiPanelEdge { Left, Top, Bottom }
-internal sealed record AiOptions(int Version = 1, string Provider = "deepseek", string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = false,
+internal sealed record AiOptions(int Version = 1, string Provider = UiDefaults.Provider, string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = UiDefaults.Pinned,
     Dictionary<string, AiBounds>? Layouts = null, double DockWidth = UiDefaults.DockWidth, double DockHeight = UiDefaults.DockHeight, double DockTopOffset = 0,
-    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = true, UiAppearance? Appearance = null, string[]? ProviderOrder = null);
+    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null);
 internal static class AiPolicy
 {
     internal static double CornerRadius(AiOptions options,double global,double width,double height)
         =>Math.Max(0,Math.Min(options.FollowGlobalCorners?global:options.WebCornerRadius,Math.Min(width,height)/2));
     internal static readonly string[] Providers = ["deepseek", "doubao", "xiaoyi", "chatgpt", "custom"];
     internal static readonly string[] Names = ["DeepSeek", "豆包", "小艺", "ChatGPT", "自定义 AI"];
-    internal static string[] OrderedProviders(AiOptions value) => (value.ProviderOrder ?? [])
-        .Concat(Providers).Distinct(StringComparer.Ordinal).Where(Providers.Contains).ToArray();
+    internal static string[] OrderedProviders(AiOptions value) => (value.ProviderOrder ?? UiDefaults.ProviderOrder)
+        .Concat(UiDefaults.ProviderOrder).Concat(Providers).Distinct(StringComparer.Ordinal).Where(Providers.Contains).ToArray();
     internal static IEnumerable<string> BuiltInProviders => Providers.Where(id => id != "custom");
     internal const double DefaultDockWidth = UiDefaults.DockWidth, MinimumDockWidth = 360, MaximumDockWidth = 1000;
     internal const double DefaultDockHeight = UiDefaults.DockHeight, MinimumDockHeight = 360, MaximumDockHeight = 1200;

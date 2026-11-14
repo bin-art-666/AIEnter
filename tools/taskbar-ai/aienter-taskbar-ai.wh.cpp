@@ -600,7 +600,7 @@ namespace taskbar = folder_menus_taskbar_xaml;
 
 static HANDLE g_stop = nullptr, g_refresh = nullptr, g_appearanceEvent = nullptr, g_mapping = nullptr;
 static volatile LONG* g_shared = nullptr;
-struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 24, enabled = 1, range = 6, intensity = 45, open = 0, sequence = 0; };
+struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 26, enabled = 1, range = 9, intensity = 77, open = 0, sequence = 0; };
 static AppearanceState g_appearance;
 static AppearanceState ReadAppearance() {
     AppearanceState state;

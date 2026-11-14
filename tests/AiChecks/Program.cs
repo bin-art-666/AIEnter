@@ -9,7 +9,7 @@ try
 {
     string path = Path.Combine(root, "ai.json"); var store = new AiOptionsStore(path);
     Check(store.Data.Provider == "deepseek" && !store.Data.Pinned && !File.Exists(path), "Defaults do not write or preload browser");
-    Check(!store.Data.FollowGlobalCorners&&AiPolicy.CornerRadius(store.Data,21,430,660)==40,"Fresh settings use the user-approved web corner defaults");
+    Check(!store.Data.FollowGlobalCorners&&AiPolicy.CornerRadius(store.Data,21,430,660)==28,"Fresh settings use the user-approved web corner defaults");
     string legacyCorners=Path.Combine(root,"legacy-corners.json");File.WriteAllText(legacyCorners,"{\"Provider\":\"deepseek\"}");
     Check(!new AiOptionsStore(legacyCorners).Data.FollowGlobalCorners,"Missing corner fields use the user-approved default");
     var customCorners=store.Data with{FollowGlobalCorners=false,WebCornerRadius=40};
@@ -17,8 +17,8 @@ try
     store.Save(customCorners);Check(new AiOptionsStore(path).Data.WebCornerRadius==40&&!new AiOptionsStore(path).Data.FollowGlobalCorners,"Custom corners persist");
     Reject(()=>store.Save(customCorners with{WebCornerRadius=41}));Reject(()=>store.Save(customCorners with{WebCornerRadius=-1}));
     store.Save(store.Data with{FollowGlobalCorners=true});
-    Check(store.Data.DockWidth == 407.5, "Older/missing settings retain the familiar dock width");
-    Check(store.Data.DockHeight == 837.5 && store.Data.DockTopOffset == 0, "Legacy configurations retain default panel dimensions");
+    Check(store.Data.DockWidth == 401, "Older/missing settings retain the familiar dock width");
+    Check(store.Data.DockHeight == 849 && store.Data.DockTopOffset == 0, "Legacy configurations retain default panel dimensions");
     var dock = AiPolicy.DockBounds(430, 660, new(0, 24, 1920, 1200), 144);
     Check(dock == new AiBounds(1257, 216, 645, 990), "Panel anchors to bottom-right with a 12 DIP gap at 150 percent scale");
     dock = AiPolicy.DockBounds(430, 1200, new(0, 24, 700, 500), 96);
@@ -109,9 +109,9 @@ try
         maximumAppearance with { TaskbarIconSize = 37 }, maximumAppearance with { GlowRange = 13 }, maximumAppearance with { GlowIntensity = 101 } })
         Reject(() => appearanceStore.Save(appearanceStore.Data with { Appearance = invalid }));
 
-    Check(new UiAppearance() == new UiAppearance(16,30,4,24,true,6,45), "Reset appearance matches the captured user settings");
-    Check(new AiOptions().DockWidth == 407.5 && new AiOptions().DockHeight == 837.5
-        && !new AiOptions().FollowGlobalCorners && new AiOptions().WebCornerRadius == 40,
+    Check(new UiAppearance() == new UiAppearance(16,30,4,26,true,9,77,24,"#1C14DDFF","#FF32D4EB"), "Reset appearance matches the captured user settings");
+    Check(new AiOptions().DockWidth == 401 && new AiOptions().DockHeight == 849
+        && !new AiOptions().FollowGlobalCorners && new AiOptions().WebCornerRadius == 28,
         "Fresh panel dimensions and web corners match the captured defaults");
     string explicitCorners = Path.Combine(root, "explicit-corners.json");
     File.WriteAllText(explicitCorners, "{\"FollowGlobalCorners\":true,\"WebCornerRadius\":7,\"DockWidth\":520,\"DockHeight\":700}");
@@ -119,7 +119,7 @@ try
     Check(explicitOptions.FollowGlobalCorners && explicitOptions.WebCornerRadius == 7 && explicitOptions.DockWidth == 520
         && explicitOptions.DockHeight == 700, "Existing explicit choices remain unchanged by new defaults");
 
-    Check(AiPolicy.OrderedProviders(new()).SequenceEqual(AiPolicy.Providers), "Legacy provider order keeps original sequence");
+    Check(AiPolicy.OrderedProviders(new()).SequenceEqual(new[] { "deepseek", "chatgpt", "doubao", "xiaoyi", "custom" }), "Missing provider order uses captured preferences");
     var reordered = appearanceStore.Data with { ProviderOrder = ["chatgpt", "doubao", "custom", "xiaoyi", "deepseek"] };
     appearanceStore.Save(reordered);
     Check(AiPolicy.OrderedProviders(new AiOptionsStore(appearancePath).Data).SequenceEqual(reordered.ProviderOrder!), "AI button order survives reload");
@@ -130,10 +130,15 @@ try
     var colorAppearance = new UiAppearance(ButtonColor: "#80445566", SelectedButtonColor: "#AA2255");
     appearanceStore.Save(appearanceStore.Data with { Appearance = colorAppearance });
     Check(new AiOptionsStore(appearancePath).Data.Appearance == colorAppearance, "Button colors and alpha survive reload");
-    Check(new UiAppearance().ButtonColor == "" && new UiAppearance().SelectedButtonColor == "", "Legacy colors keep theme defaults");
+    Check(new UiAppearance().ButtonColor == "#1C14DDFF" && new UiAppearance().SelectedButtonColor == "#FF32D4EB", "Missing colors use captured preferences");
     Check(UiAppearance.ColorValue("#112233", 0) == 0xFF112233 && UiAppearance.ColorValue("#80112233", 0) == 0x80112233, "Color channels preserve opacity");
     foreach(var invalidColor in new string?[] { null, "red", "#GG0022", "#12345", "#123456789" })
         Reject(() => appearanceStore.Save(appearanceStore.Data with { Appearance = colorAppearance with { ButtonColor = invalidColor! } }));
+    var explicitTheme = appearanceStore.Data with { Appearance = new UiAppearance(ButtonColor: "", SelectedButtonColor: ""), ProviderOrder = ["xiaoyi", "chatgpt"], Provider = "xiaoyi", Pinned = true, FloatingPanel = false };
+    appearanceStore.Save(explicitTheme);
+    var loadedTheme = new AiOptionsStore(appearancePath).Data;
+    Check(loadedTheme.Appearance!.ButtonColor == "" && loadedTheme.Appearance.SelectedButtonColor == "", "Explicit system colors remain automatic after default update");
+    Check(loadedTheme.Provider == "xiaoyi" && loadedTheme.Pinned && !loadedTheme.FloatingPanel && loadedTheme.ProviderOrder!.SequenceEqual(explicitTheme.ProviderOrder!), "Explicit service, mode and order survive changed defaults");
     Console.WriteLine($"PASS: {checks} AI configuration, navigation and geometry checks");
 }
 finally { Directory.Delete(root, true); }

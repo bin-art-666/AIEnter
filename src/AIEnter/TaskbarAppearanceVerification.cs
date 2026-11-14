@@ -14,7 +14,7 @@ public partial class App
                 throw new InvalidOperationException("Taskbar checks require an isolated --data-dir.");
             Directory.CreateDirectory(DataDirectory);
             string native = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".tools", "windhawk", "AppData", "Engine", "ModsWritable", "aienter-taskbar-ai.ini"));
-            async Task WaitFor(int glow, int size = 24)
+            async Task WaitFor(int glow, int size = UiDefaults.TaskbarIconSize)
             {
                 for (int attempt = 0; attempt < 80; attempt++)
                 {
