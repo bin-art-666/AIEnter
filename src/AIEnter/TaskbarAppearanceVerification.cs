@@ -27,7 +27,11 @@ public partial class App
                             .GroupBy(pair => pair[0]).ToDictionary(group => group.Key, group => group.Last()[1]);
                         if (fields.GetValueOrDefault("GlowActive") == glow.ToString() && fields.GetValueOrDefault("ArtworkSize") == size.ToString()
                             && fields.GetValueOrDefault("GlowRange") == expectedAppearance.GlowRange.ToString()
-                            && fields.GetValueOrDefault("GlowIntensity") == expectedAppearance.GlowIntensity.ToString()) return;
+                            && fields.GetValueOrDefault("GlowIntensity") == expectedAppearance.GlowIntensity.ToString()
+                            && fields.GetValueOrDefault("ButtonWidth") == (size + 4).ToString()
+                            && fields.GetValueOrDefault("ButtonHeight") == (size + 4).ToString()
+                            && fields.GetValueOrDefault("ButtonRoundClipped") == "1"
+                            && fields.GetValueOrDefault("GlowOverlayNonInteractive") == "1") return;
                     }
                     catch (IOException) { }
                     await Task.Delay(100);
@@ -54,7 +58,7 @@ public partial class App
             Ai.Hide(); await WaitFor(0);
             File.WriteAllText(resultPath, JsonSerializer.Serialize(new { passed = true, localPageOnly = true,
                 showLights = true, hideClears = true, settingsOnlyStaysOff = true, iconPreview = true,
-                previewRollback = true, disabledAndZeroClear = true }));
+                previewRollback = true, disabledAndZeroClear = true, compactCircle = true, glowDoesNotReserveWidth = true }));
         }
         catch (Exception error)
         {

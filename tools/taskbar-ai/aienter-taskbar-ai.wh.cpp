@@ -34,6 +34,9 @@
 #include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Input.h>
+#include <winrt/Windows.UI.Xaml.Hosting.h>
+#include <winrt/Windows.UI.Composition.h>
+#include <cmath>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
@@ -635,6 +638,8 @@ struct AttachedButton {
     controls::Panel parent{nullptr};
     controls::Button button{nullptr};
     controls::Grid glyphHost{nullptr}, glow{nullptr};
+    controls::Canvas glowOverlay{nullptr};
+    xaml::Media::TranslateTransform glowPosition{nullptr};
     xaml::Shapes::Ellipse icon{nullptr};
     xaml::Media::Imaging::BitmapImage artwork{nullptr};
     winrt::event_token artworkOpened{}, artworkFailed{};
@@ -658,11 +663,19 @@ static void UpdateButtonAppearance() {
     double iconSize = std::min((double)g_appearance.icon, availableHeight);
     double range = g_appearance.enabled ? (double)g_appearance.range : 0;
     double extent = iconSize + 2 * range;
-    state.button.Width(extent + 4);
-    state.glyphHost.Width(extent); state.glyphHost.Height(std::min(extent, availableHeight));
+    double diameter = iconSize + 4;
+    state.button.Width(diameter); state.button.Height(diameter);
+    state.button.CornerRadius({diameter / 2, diameter / 2, diameter / 2, diameter / 2});
+    auto buttonVisual = xaml::Hosting::ElementCompositionPreview::GetElementVisual(state.button);
+    auto buttonClip = buttonVisual.Compositor().CreateEllipseGeometry();
+    buttonClip.Center({(float)(diameter / 2), (float)(diameter / 2)});
+    buttonClip.Radius({(float)(diameter / 2), (float)(diameter / 2)});
+    buttonVisual.Clip(buttonVisual.Compositor().CreateGeometricClip(buttonClip));
+    state.glyphHost.Width(iconSize); state.glyphHost.Height(iconSize);
+    state.glow.Width(extent); state.glow.Height(std::min(extent, availableHeight));
     xaml::Media::RectangleGeometry clip;
     clip.Rect({0, 0, (float)extent, (float)std::min(extent, availableHeight)});
-    state.glyphHost.Clip(clip);
+    state.glow.Clip(clip);
     state.icon.Width(iconSize); state.icon.Height(iconSize);
     state.glow.Children().Clear();
     for (int layer = 0; layer < 16; ++layer) {
@@ -677,7 +690,19 @@ static void UpdateButtonAppearance() {
     state.glow.Opacity(active ? g_appearance.intensity / 100.0 : 0.0);
     Wh_SetIntValue(L"GlowActive", active ? 1 : 0);
     Wh_SetIntValue(L"GlowRange", g_appearance.range); Wh_SetIntValue(L"GlowIntensity", g_appearance.intensity);
+    Wh_SetIntValue(L"ButtonRoundClipped", 1); Wh_SetIntValue(L"GlowOverlayNonInteractive", 1);
+    Wh_SetIntValue(L"CompactButtonPadding", 2); Wh_SetIntValue(L"ButtonHeight", (int)diameter);
     Wh_SetIntValue(L"ArtworkCircleCropped", 1); Wh_SetIntValue(L"ArtworkSize", (int)iconSize); Wh_SetIntValue(L"ButtonWidth", (int)state.button.Width());
+}
+static void PositionGlow(AttachedButton& state) {
+    auto buttonPoint = state.button.TransformToVisual(state.parent).TransformPoint({0, 0});
+    auto overlayPoint = state.glowOverlay.TransformToVisual(state.parent).TransformPoint({0, 0});
+    double baseX = overlayPoint.X - state.glowPosition.X(), baseY = overlayPoint.Y - state.glowPosition.Y();
+    double x = buttonPoint.X + (state.button.ActualWidth() - state.glow.Width()) / 2 - baseX;
+    double y = buttonPoint.Y + (state.button.ActualHeight() - state.glow.Height()) / 2 - baseY;
+    if (std::abs(x - state.glowPosition.X()) > .1) state.glowPosition.X(x);
+    if (std::abs(y - state.glowPosition.Y()) > .1) state.glowPosition.Y(y);
+    state.glowOverlay.Visibility(xaml::Visibility::Visible);
 }
 static void ApplyAppearanceState(void* parameter) {
     if (g_unloading) return;
@@ -854,6 +879,7 @@ static void RemoveButton() {
         state.button.LayoutUpdated(state.layout);
         controls::Primitives::FlyoutBase::SetAttachedFlyout(state.button, nullptr);
         uint32_t index;
+        if (state.parent.Children().IndexOf(state.glowOverlay, index)) state.parent.Children().RemoveAt(index);
         if (state.parent.Children().IndexOf(state.button, index)) state.parent.Children().RemoveAt(index);
     }
     slot::Release(state.parent, state.lease);
@@ -880,11 +906,12 @@ static void AttachButton(void* parameter) {
     if (!slot::ResolveSlot(parent, slot::Anchor::AfterClock, position)) return;
     controls::Button button;
     button.Name(L"AIEnterAiButton");
-    button.MinWidth(0);
+    button.MinWidth(0); button.MinHeight(0);
     button.Width(28);
     button.Padding({0, 0, 0, 0});
-    button.Margin({0, 2, 0, 2});
-    button.VerticalAlignment(xaml::VerticalAlignment::Stretch);
+    button.Margin({0, 0, 0, 0}); button.BorderThickness({0, 0, 0, 0});
+    button.VerticalAlignment(xaml::VerticalAlignment::Center);
+    button.HorizontalContentAlignment(xaml::HorizontalAlignment::Center); button.VerticalContentAlignment(xaml::VerticalAlignment::Center);
     std::wstring asset = g_executable.substr(0, g_executable.find_last_of(L"\\/")) + L"/Assets/AIEnter.png";
     std::replace(asset.begin(), asset.end(), L'\\', L'/');
     xaml::Shapes::Ellipse icon;
@@ -903,13 +930,21 @@ static void AttachButton(void* parameter) {
     icon.Fill(fill);
     controls::Grid glyphHost, glow;
     glyphHost.IsHitTestVisible(false); glow.IsHitTestVisible(false);
-    glyphHost.Children().Append(glow); glyphHost.Children().Append(icon);
+    glyphHost.Children().Append(icon);
+    // Zero-size Canvas does not add desired width, and never intercepts input.
+    controls::Canvas glowOverlay;
+    glowOverlay.Width(0); glowOverlay.Height(0); glowOverlay.IsHitTestVisible(false);
+    glowOverlay.HorizontalAlignment(xaml::HorizontalAlignment::Left); glowOverlay.VerticalAlignment(xaml::VerticalAlignment::Top);
+    glowOverlay.Visibility(xaml::Visibility::Collapsed); controls::Canvas::SetZIndex(glowOverlay, -1);
+    xaml::Media::TranslateTransform glowPosition; glowOverlay.RenderTransform(glowPosition);
+    glowOverlay.Children().Append(glow);
     button.Content(glyphHost);
     xaml::Automation::AutomationProperties::SetName(button, L"AIEnter AI 对话");
     controls::ToolTipService::SetToolTip(button, winrt::box_value(L"AIEnter AI · 左键打开／收起对话，右键打开设置"));
     auto state = new AttachedButton;
     state->parent = parent;
     state->button = button; state->glyphHost = glyphHost; state->glow = glow; state->icon = icon;
+    state->glowOverlay = glowOverlay; state->glowPosition = glowPosition;
     if (!slot::AcquireAt(parent, position, L"AIEnterAiPosition", state->lease)) { delete state; return; }
     try {
         state->pointerPress = winrt::box_value(xaml::Input::PointerEventHandler([state](auto&&, auto&& args) {
@@ -927,8 +962,12 @@ static void AttachButton(void* parameter) {
         // A direct right-click action avoids keeping callbacks in an open flyout at unload.
         state->rightTap = button.RightTapped([](auto&&, auto&& args) { args.Handled(true); LaunchAi(true); });
         if (!slot::PlaceChild(parent, state->lease, button)) throw winrt::hresult_error(E_FAIL);
+        parent.Children().Append(glowOverlay);
     } catch (...) {
         button.RemoveHandler(xaml::UIElement::PointerPressedEvent(), state->pointerPress); button.Click(state->click); button.RightTapped(state->rightTap);
+        uint32_t index;
+        if (parent.Children().IndexOf(glowOverlay, index)) parent.Children().RemoveAt(index);
+        if (parent.Children().IndexOf(button, index)) parent.Children().RemoveAt(index);
         slot::Release(parent, state->lease); delete state; throw;
     }
     g_attached = state;
@@ -954,6 +993,7 @@ static void AttachButton(void* parameter) {
     state->layout = button.LayoutUpdated([state](auto&&, auto&&) {
         try {
             if (state->button.ActualWidth() < 1) return;
+            PositionGlow(*state);
             auto clock = slot::FindDirectChild(state->parent, L"NotificationCenterButton");
             if (!clock) return;
             auto buttonPoint = state->button.TransformToVisual(state->parent).TransformPoint({0, 0});

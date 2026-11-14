@@ -42,7 +42,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         var fields = new StackPanel { Spacing = 16 };
         fields.Children.Add(Section("任务栏图标"));
         fields.Children.Add(taskbarSize); fields.Children.Add(glow); fields.Children.Add(glowRange); fields.Children.Add(glowIntensity);
-        fields.Children.Add(PanelTheme.Hint("图标和光晕以任务栏可用高度为上限，预留空间随大小调整。只有对话展开时显示光晕，设置窗口不会点亮。"));
+        fields.Children.Add(PanelTheme.Hint("图标紧贴圆形按钮，光晕独立绘制，不额外撑宽占位，并受任务栏可用高度限制。只有对话展开时显示光晕，设置窗口不会点亮。"));
         fields.Children.Add(Section("AI 与窗口"));
         InitializeProviderManagement(fields);
         fields.Children.Add(floatingMode); fields.Children.Add(pinned);
