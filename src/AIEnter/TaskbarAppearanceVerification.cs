@@ -13,6 +13,8 @@ public partial class App
             if (!Environment.GetCommandLineArgs().Contains("--data-dir") || DataDirectory.Equals(live, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Taskbar checks require an isolated --data-dir.");
             Directory.CreateDirectory(DataDirectory);
+            // Keep focus transitions from hiding the panel during appearance-only checks.
+            Ai.Options.Save(Ai.Options.Data with { Pinned = true });
             string native = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".tools", "windhawk", "AppData", "Engine", "ModsWritable", "aienter-taskbar-ai.ini"));
             async Task WaitFor(int glow, int size = UiDefaults.TaskbarIconSize)
             {
@@ -27,7 +29,7 @@ public partial class App
                     catch (IOException) { }
                     await Task.Delay(100);
                 }
-                throw new InvalidOperationException($"Native appearance did not reach glow={glow}, icon={size}.");
+                throw new InvalidOperationException($"Native appearance did not reach glow={glow}, icon={size}. Open={Ai.IsOpen}; appearance={JsonSerializer.Serialize(Appearance)}; native={File.ReadAllText(native).Split("[SymbolCache]")[0]}");
             }
             await WaitFor(0);
             await OpenAiWindow(); await WaitFor(1);

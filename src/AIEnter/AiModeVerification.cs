@@ -102,10 +102,10 @@ internal sealed partial class AiWindow
         await Task.Delay(120); VerifyBackplateCorners(); await CheckDraft();
         App.PreviewAppearance(null); VerifyBackplateCorners();
         var originalOrder = options.Data.ProviderOrder;
-        var reversedOrder = AiPolicy.Providers.Reverse().ToArray();
+        var reversedOrder = AiPolicy.AvailableProviders(options.Data).Reverse().ToArray();
         options.Save(options.Data with { ProviderOrder = reversedOrder });
         await Task.Delay(120); root.UpdateLayout();
-        Check(providerChoices.Select(c => c.Id).SequenceEqual(reversedOrder.Where(id => id != "custom")), "Provider choices did not follow saved order.");
+        Check(providerChoices.Select(c => c.Id).SequenceEqual(reversedOrder), "Provider choices did not follow saved order.");
         Check(providerLabels.Children.OfType<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>().Select(b => ((Choice)b.Tag).Id).SequenceEqual(providerChoices.Select(c => c.Id)), "Toolbar buttons did not follow saved order.");
         RefreshProviderOverflow();
         var hiddenNames = providerLabels.Children.OfType<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>().Where(b => b.Visibility == Microsoft.UI.Xaml.Visibility.Collapsed).Select(b => ((Choice)b.Tag).Name).ToArray();

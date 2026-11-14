@@ -13,14 +13,35 @@
   "Provider": "deepseek",
   "Pinned": false,
   "FloatingPanel": true,
-  "DockWidth": 401,
-  "DockHeight": 849,
+  "DockWidth": 415.5,
+  "DockHeight": 829,
   "FollowGlobalCorners": false,
   "WebCornerRadius": 28,
   "ProviderOrder": [
     "deepseek",
     "chatgpt",
     "doubao",
-    "xiaoyi"
-  ]
+    "xiaoyi",
+    "ai-gemini",
+    "ai-grok",
+    "ai-kimi"
+  ],
+  "AddedProviders": [
+    {
+      "Id": "ai-gemini",
+      "Name": "Gemini",
+      "Url": "https://gemini.google.com/app?utm_source=app_launcher&utm_medium=owned&utm_campaign=base_all"
+    },
+    {
+      "Id": "ai-grok",
+      "Name": "Grok",
+      "Url": "https://grok.com/"
+    },
+    {
+      "Id": "ai-kimi",
+      "Name": "Kimi",
+      "Url": "https://www.kimi.com/en"
+    }
+  ],
+  "DefaultProvider": "deepseek"
 }

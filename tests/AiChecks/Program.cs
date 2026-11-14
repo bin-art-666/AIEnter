@@ -9,16 +9,28 @@ try
 {
     string path = Path.Combine(root, "ai.json"); var store = new AiOptionsStore(path);
     Check(store.Data.Provider == "deepseek" && !store.Data.Pinned && !File.Exists(path), "Defaults do not write or preload browser");
+    Check(store.Data.AddedProviders!.Select(p => p.Name).SequenceEqual(new[] { "Gemini", "Grok", "Kimi" })
+        && AiPolicy.AvailableProviders(store.Data).Count() == 7 && store.Data.DefaultProvider == "deepseek", "Fresh profiles include all seven captured AI entries");
+    Check(AiPolicy.OrderedProviders(store.Data).SequenceEqual(UiDefaults.ProviderOrder), "Fresh profiles use the captured seven-provider order");
+    var independentDefaults = new AiOptionsStore(Path.Combine(root, "independent.json"));
+    Check(!ReferenceEquals(independentDefaults.Data.AddedProviders, store.Data.AddedProviders)
+        && !ReferenceEquals(independentDefaults.Data.ProviderOrder, store.Data.ProviderOrder), "Profiles do not share mutable default arrays");
+    string removedDefaults = Path.Combine(root, "removed-defaults.json");
+    File.WriteAllText(removedDefaults, "{\"Version\":2,\"AddedProviders\":[]}");
+    var removedStore = new AiOptionsStore(removedDefaults);
+    removedStore.Save(removedStore.Data);
+    Check(new AiOptionsStore(removedDefaults).Data.AddedProviders!.Length == 0, "Deleted default AI stays removed after save and restart");
     Check(!store.Data.FollowGlobalCorners&&AiPolicy.CornerRadius(store.Data,21,430,660)==28,"Fresh settings use the user-approved web corner defaults");
     string legacyCorners=Path.Combine(root,"legacy-corners.json");File.WriteAllText(legacyCorners,"{\"Provider\":\"deepseek\"}");
+    Check(new AiOptionsStore(legacyCorners).Data.AddedProviders!.Length == 3 && File.ReadAllText(legacyCorners) == "{\"Provider\":\"deepseek\"}", "Missing service defaults load without rewriting existing files");
     Check(!new AiOptionsStore(legacyCorners).Data.FollowGlobalCorners,"Missing corner fields use the user-approved default");
     var customCorners=store.Data with{FollowGlobalCorners=false,WebCornerRadius=40};
     Check(AiPolicy.CornerRadius(customCorners,12,430,660)==40&&AiPolicy.CornerRadius(customCorners,12,30,20)==10,"Custom corners are independent and clamped to small viewports");
     store.Save(customCorners);Check(new AiOptionsStore(path).Data.WebCornerRadius==40&&!new AiOptionsStore(path).Data.FollowGlobalCorners,"Custom corners persist");
     Reject(()=>store.Save(customCorners with{WebCornerRadius=41}));Reject(()=>store.Save(customCorners with{WebCornerRadius=-1}));
     store.Save(store.Data with{FollowGlobalCorners=true});
-    Check(store.Data.DockWidth == 401, "Older/missing settings retain the familiar dock width");
-    Check(store.Data.DockHeight == 849 && store.Data.DockTopOffset == 0, "Legacy configurations retain default panel dimensions");
+    Check(store.Data.DockWidth == 415.5, "Older/missing settings retain the familiar dock width");
+    Check(store.Data.DockHeight == 829 && store.Data.DockTopOffset == 0, "Legacy configurations retain default panel dimensions");
     var dock = AiPolicy.DockBounds(430, 660, new(0, 24, 1920, 1200), 144);
     Check(dock == new AiBounds(1257, 216, 645, 990), "Panel anchors to bottom-right with a 12 DIP gap at 150 percent scale");
     dock = AiPolicy.DockBounds(430, 1200, new(0, 24, 700, 500), 96);
@@ -110,7 +122,7 @@ try
         Reject(() => appearanceStore.Save(appearanceStore.Data with { Appearance = invalid }));
 
     Check(new UiAppearance() == new UiAppearance(16,30,4,26,true,9,77,24,"#1C14DDFF","#FF32D4EB"), "Reset appearance matches the captured user settings");
-    Check(new AiOptions().DockWidth == 401 && new AiOptions().DockHeight == 849
+    Check(new AiOptions().DockWidth == 415.5 && new AiOptions().DockHeight == 829
         && !new AiOptions().FollowGlobalCorners && new AiOptions().WebCornerRadius == 28,
         "Fresh panel dimensions and web corners match the captured defaults");
     string explicitCorners = Path.Combine(root, "explicit-corners.json");
@@ -122,7 +134,7 @@ try
     Check(AiPolicy.OrderedProviders(new()).SequenceEqual(new[] { "deepseek", "chatgpt", "doubao", "xiaoyi" }), "Missing provider order uses captured preferences");
     var reordered = appearanceStore.Data with { ProviderOrder = ["chatgpt", "doubao", "xiaoyi", "deepseek"] };
     appearanceStore.Save(reordered);
-    Check(AiPolicy.OrderedProviders(new AiOptionsStore(appearancePath).Data).SequenceEqual(reordered.ProviderOrder!), "AI button order survives reload");
+    Check(AiPolicy.OrderedProviders(new AiOptionsStore(appearancePath).Data).SequenceEqual(reordered.ProviderOrder!.Concat(UiDefaults.AddedProviders.Select(p => p.Id))), "AI button order survives reload");
     Check(AiPolicy.OrderedProviders(new(ProviderOrder: ["chatgpt"])).SequenceEqual(new[] { "chatgpt", "deepseek", "doubao", "xiaoyi" }), "Missing providers append in default order");
     Reject(() => appearanceStore.Save(reordered with { ProviderOrder = ["chatgpt", "chatgpt"] }));
     Reject(() => appearanceStore.Save(reordered with { ProviderOrder = ["unknown"] }));

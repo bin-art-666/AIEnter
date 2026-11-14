@@ -109,14 +109,28 @@ internal sealed class PanelCaption : IDisposable
             ClientToScreen(handle, ref client);
             if (HitTest(handle, client.X, client.Y) == 2) throw new Exception("Caption overlaps an AI service or window control button.");
         }
-        if (header.ActualWidth > 600)
+        // The middle can contain an AI button when the default list grows.
+        // Independently find the widest actual horizontal gap instead.
+        var spans = HeaderButtons(header).Select(button =>
         {
-            var middle = header.TransformToVisual(rootElement).TransformPoint(new(header.ActualWidth / 2, header.ActualHeight / 2));
+            double left = button.TransformToVisual(header).TransformPoint(new()).X;
+            return (Left: left - 2, Right: left + button.ActualWidth + 2);
+        }).OrderBy(span => span.Left);
+        double cursor = 0, gapLeft = 0, gapWidth = 0;
+        foreach (var span in spans.Append((Left: header.ActualWidth, Right: header.ActualWidth)))
+        {
+            if (span.Left - cursor > gapWidth) { gapLeft = cursor; gapWidth = span.Left - cursor; }
+            cursor = Math.Max(cursor, span.Right);
+        }
+        if (gapWidth > 10)
+        {
+            var middle = header.TransformToVisual(rootElement).TransformPoint(new(gapLeft + gapWidth / 2, header.ActualHeight / 2));
             var client = new Native.Point { X = (int)Math.Round(middle.X * header.XamlRoot.RasterizationScale), Y = (int)Math.Round(middle.Y * header.XamlRoot.RasterizationScale) };
             ClientToScreen(handle, ref client);
-            if (HitTest(handle, client.X, client.Y) != 2) throw new Exception("The wide header's middle blank area is not draggable.");
+            if (HitTest(handle, client.X, client.Y) != 2) throw new Exception("The header's empty gap is not draggable.");
         }
     }
+
     static int HitTest(IntPtr window, int x, int y)
     {
         var coordinate = new IntPtr(unchecked((int)((uint)(ushort)x | ((uint)(ushort)y << 16))));

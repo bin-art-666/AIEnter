@@ -103,7 +103,7 @@ internal static partial class AiPolicy
 internal sealed class AiOptionsStore
 {
     readonly string path;
-    internal AiOptions Data { get; private set; } = new(Layouts: []);
+    internal AiOptions Data { get; private set; } = UiDefaults.CreateOptions();
     internal bool ReadOnly { get; }
     internal string? Warning { get; }
     bool preserveBackup;
@@ -124,10 +124,18 @@ internal sealed class AiOptionsStore
     {
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException();
         var value = JsonSerializer.Deserialize<AiOptions>(File.ReadAllText(path)) ?? throw new InvalidDataException();
+        // Missing fields receive defaults; an explicit empty list keeps user removals.
+        // Legacy custom settings migrate independently, preserving their original entry.
+        if (value.Version == 2 && value.AddedProviders == null && value.CustomUrl.Length == 0 && value.Provider != "custom")
+            value = value with { AddedProviders = UiDefaults.AddedProviders };
         value = AiPolicy.Upgrade(value); AiPolicy.Validate(value); return value with { Layouts = value.Layouts ?? [] };
     }
     internal void Save(AiOptions value)
     {
+        // Missing fields receive defaults; an explicit empty list keeps user removals.
+        // Legacy custom settings migrate independently, preserving their original entry.
+        if (value.Version == 2 && value.AddedProviders == null && value.CustomUrl.Length == 0 && value.Provider != "custom")
+            value = value with { AddedProviders = UiDefaults.AddedProviders };
         value = AiPolicy.Upgrade(value); AiPolicy.Validate(value); if (ReadOnly) throw new IOException(Warning);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temporary = path + ".tmp";
