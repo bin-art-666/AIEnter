@@ -1,0 +1,17 @@
+{
+  "CapturedOn": "2026-11-14",
+  "ButtonRadius": 16,
+  "ButtonSize": 30,
+  "WindowPadding": 4,
+  "TaskbarIconSize": 24,
+  "GlowEnabled": true,
+  "GlowRange": 6,
+  "GlowIntensity": 45,
+  "DockWidth": 407.5,
+  "DockHeight": 837.5,
+  "FollowGlobalCorners": false,
+  "WebCornerRadius": 40,
+  "BackplateRadius": 24,
+  "ButtonColor": "",
+  "SelectedButtonColor": ""
+}

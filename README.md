@@ -1,0 +1,77 @@
+# AIEnter · AI 入口
+
+Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实任务栏按钮并预留位置，左键打开对话，右键打开设置。
+
+## 功能
+
+- 内置 DeepSeek、豆包、小艺、ChatGPT，支持配置自定义 HTTPS AI 网页。
+- 顶栏服务按钮可排序，窄窗口中放不下的服务进入“更多”菜单。
+- 悬浮面板每次打开定位到工作区右下角；支持固定、调整大小及切换独立窗口。切换模式保留同一网页和草稿。
+- 紧凑单行工具栏，顶部空白可拖动独立窗口，不常驻显示标题和底部网址。
+- 可设置背板圆角、网页圆角、按钮大小、圆角、颜色与透明度；颜色分别支持普通按钮和选中 AI。
+- 任务栏圆形图标支持大小调节，对话打开时显示可调光晕。图标位于时间与“显示桌面”区域之间。
+- 外观实时预览，保存后记住，关闭设置撤销未保存的预览。
+
+本项目嵌入 AI 官方网页，首次使用请自行登录；不需要在应用中配置 API 密钥。账号、网页登录资料和设置保存在本机 `%LOCALAPPDATA%\AIEnter`，不随源码上传。
+
+## 构建与运行
+
+当前仓库提供源码，暂不发布 Release 或预编译安装包。
+
+环境要求：Windows 11 x64、.NET 10 SDK、WebView2 Runtime。原生任务栏扩展需要 Windhawk 1.7.3 便携版及其 C++/WinRT 开发工具。
+
+1. 克隆仓库：
+
+   ```powershell
+   git clone https://github.com/bin-art-666/AIEnter.git
+   cd AIEnter
+   ```
+
+2. 安装 .NET 10 SDK（或放入 `.tools\dotnet`），将 Windhawk 便携运行时及编译器准备到 `.tools\windhawk`；扩展构建脚本要求存在 `.tools\windhawk\Compiler\bin\clang++.exe`。
+3. 构建并启动：
+
+   ```powershell
+   .\build.ps1
+   .\tools\taskbar-ai\Build.ps1
+   .\tools\taskbar-ai\Start.ps1
+   ```
+
+主体构建将从 NuGet 获取依赖；已准备 `.tools\feed` 离线源时可使用 `.\build.ps1 -Offline`。开发依赖与缓存位于 `.tools`，输出位于 `dist`，验证记录位于 `.build`，均不提交 Git。
+
+更新正在运行的版本前，先运行 `.\tools\taskbar-ai\Stop.ps1`。此脚本停止应用并卸载本项目的任务栏扩展，不取消已有的登录自启配置。仓库构建与启动脚本默认不注册开机自启。
+
+常用入口：
+
+```powershell
+.\dist\AIEnter.exe             # 打开 AI
+.\dist\AIEnter.exe --settings  # 打开设置
+.\dist\AIEnter.exe --quit      # 退出应用
+.\tools\taskbar-ai\Stop.ps1    # 停止应用及任务栏入口
+```
+
+## 验证
+
+配置、导航与几何检查：
+
+```powershell
+dotnet run --project tests\AiChecks --configuration Release
+```
+
+构建后可使用真实 WinUI / WebView2 本地测试页验证窗口模式、顶栏布局、排序、外观预览、原生拖动和草稿保留；不会登录或连接 AI 官网：
+
+```powershell
+.\dist\AIEnter.exe --verify-ai-modes --data-dir .build\mode-check
+```
+
+结果写入指定目录的 `mode-result.json`。最新本机验收包括 101 项配置与几何检查，以及原生窗口模式和颜色预览检查。
+
+## 兼容性与来源
+
+任务栏扩展依赖 Explorer 内部 XAML 布局和符号，不是微软保证兼容的公共扩展接口。当前面向 Windows 11 x64 主任务栏；不支持的布局或符号获取失败时不插入，系统升级后需要重新验证。多屏热插拔、自动隐藏及所有系统版本的兼容性尚未全面验证。
+
+- [任务栏与窗口实现说明](docs/taskbar-ai.md)
+- [来源与独立边界](docs/source-origin.md)
+- [UI 默认值](config/ui-defaults.json)
+- [任务栏辅助代码的 MIT 许可及来源](ThirdParty/TaskbarIntegration-MIT.txt)
+
+Windhawk、.NET、Windows App SDK 等依赖保留各自许可证，依赖运行时不包含在本仓库中。

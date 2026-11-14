@@ -1,0 +1,18 @@
+.tools/
+.build/
+dist/
+artifacts/
+**/bin/
+**/obj/
+.vs/
+*.user
+*.log
+
+# Local settings, credentials and browser data
+ai.json
+ai.json.bak
+.env
+.env.*
+*.pfx
+*.p12
+**/WebView2/
