@@ -20,7 +20,9 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 
 ## 构建与运行
 
-当前仓库提供源码，暂不发布 Release 或预编译安装包。
+当前正式版为 [v1.0.0](https://github.com/bin-art-666/AIEnter/releases/tag/v1.0.0)。下载 `AIEnter-v1.0.0-win-x64.zip`，完整解压后运行 `AIEnter.exe`，不要只复制单个 EXE。程序包包含 .NET 与 Windows App SDK 运行依赖，仍需要 WebView2 Runtime。
+
+时间右侧的真实任务栏按钮需要另行安装 Windhawk，导入发行包内的 `Taskbar/aienter-taskbar-ai.wh.cpp` 并将其 `executable` 设置为解压后的 `AIEnter.exe` 完整路径。具体步骤见 [发行版使用说明](docs/release-usage.md)。发行包不包含用户设置、登录缓存和 Windhawk 运行时，也不自动配置开机自启。
 
 环境要求：Windows 11 x64、.NET 10 SDK、WebView2 Runtime。原生任务栏扩展需要 Windhawk 1.7.3 便携版及其 C++/WinRT 开发工具。
 
