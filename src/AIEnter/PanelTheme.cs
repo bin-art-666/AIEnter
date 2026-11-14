@@ -92,7 +92,7 @@ internal static partial class PanelTheme
     static MaterialOptions Material() => new(TintOpacity: (float)Value<double>("PanelTintOpacity"), LuminosityOpacity: (float)Value<double>("PanelLuminosityOpacity"));
     internal static GlassBackdrop Backdrop() => new(Material());
     internal static SystemBackdropElement BackdropSurface() => Track(new SystemBackdropElement
-    { IsHitTestVisible = false, SystemBackdrop = Backdrop() }, static surface =>
+    { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Top, SystemBackdrop = Backdrop() }, static surface =>
     {
         surface.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
         ((GlassBackdrop)surface.SystemBackdrop).Update(Material());

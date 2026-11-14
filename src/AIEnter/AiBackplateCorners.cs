@@ -5,7 +5,7 @@ namespace AIEnter;
 
 internal sealed partial class AiWindow
 {
-    (int Width, int Height, int Radius)? backplateShape;
+    (int Width, int Height, int Radius, int BottomRadius)? backplateShape;
     AiResizeFrame? resizeFrame;
     void InitializeBackplateCorners()
     {
@@ -29,7 +29,16 @@ internal sealed partial class AiWindow
         if (width <= 0 || height <= 0) return;
         int radius = Math.Min(Math.Min(width, height) / 2,
             (int)Math.Round(App.Appearance.BackplateRadius * Native.GetDpiForWindow(handle) / 96d));
-        root.CornerRadius = backplate.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
+        // The page owns the lower silhouette. A full-window glass surface behind
+        // its larger web corners leaves visible tinted wedges, even when clipped.
+        pageFrame.Margin = new Thickness(-root.Padding.Left, 0, -root.Padding.Right, -root.Padding.Bottom);
+        double webRadius = AiPolicy.CornerRadius(cornerPreview ?? options.Data,
+            PanelTheme.Value<CornerRadius>("CardRadius").TopLeft, width, height);
+        double headerBottom = root.Padding.Top + aiHeader.Margin.Top + aiHeader.ActualHeight + root.RowSpacing;
+        backplate.Height = Math.Max(1, headerBottom + webRadius);
+        int bottomRadius = (int)Math.Round(webRadius * Native.GetDpiForWindow(handle) / 96d);
+        root.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius, App.Appearance.BackplateRadius, webRadius, webRadius);
+        backplate.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius, App.Appearance.BackplateRadius, 0, 0);
         // Grid.CornerRadius only rounds its own paint. Clip the complete content
         // visual so external glass and WebView composition layers cannot leak.
         var host = (Microsoft.UI.Xaml.Controls.Border)Content;
@@ -37,22 +46,23 @@ internal sealed partial class AiWindow
         if (host.ActualWidth > 0 && host.ActualHeight > 0)
         {
             var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(host);
-            var geometry = visual.Compositor.CreateRoundedRectangleGeometry();
-            geometry.Size = new System.Numerics.Vector2((float)host.ActualWidth, (float)host.ActualHeight);
-            geometry.CornerRadius = new System.Numerics.Vector2((float)App.Appearance.BackplateRadius);
-            visual.Clip = visual.Compositor.CreateGeometricClip(geometry);
+            var clip = visual.Compositor.CreateRectangleClip();
+            clip.Left = clip.Top = 0; clip.Right = (float)host.ActualWidth; clip.Bottom = (float)host.ActualHeight;
+            clip.TopLeftRadius = clip.TopRightRadius = new System.Numerics.Vector2((float)App.Appearance.BackplateRadius);
+            clip.BottomLeftRadius = clip.BottomRightRadius = new System.Numerics.Vector2((float)webRadius);
+            visual.Clip = clip;
         }
-        if (backplateShape == (width, height, radius)) return;
+        if (backplateShape == (width, height, radius, bottomRadius)) return;
         // Clip the native window as well as its XAML content: acrylic must not
         // remain visible behind the transparent corners. Windows owns a set HRGN.
-        var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        var region = CreateSilhouette(width, height, radius, bottomRadius);
         if (region == IntPtr.Zero) throw new InvalidOperationException("无法创建背板圆角区域。");
         if (SetWindowRgn(handle, region, true) == 0)
         {
             DeleteObject(region);
             throw new InvalidOperationException("无法应用背板圆角区域。");
         }
-        backplateShape = (width, height, radius);
+        backplateShape = (width, height, radius, bottomRadius);
     }
     internal void VerifyBackplateCorners()
     {
@@ -60,13 +70,18 @@ internal sealed partial class AiWindow
             throw new Exception("Window canvas still paints a rectangular glass backdrop.");
         if (backplate.SystemBackdrop is not GlassBackdrop { IsReady: true } || backplate.CornerRadius.TopLeft != App.Appearance.BackplateRadius)
             throw new Exception("Glass material is not bound to the rounded backplate element.");
-        if (Math.Abs(backplate.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1 || Math.Abs(backplate.ActualHeight - ((FrameworkElement)Content).ActualHeight) > 1)
-            throw new Exception("Rounded glass does not fill the window client area.");
+        if (Math.Abs(backplate.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1
+            || backplate.ActualHeight >= ((FrameworkElement)Content).ActualHeight / 2)
+            throw new Exception("Glass still covers the conversation perimeter.");
+        var pageOrigin = pageFrame.TransformToVisual((UIElement)Content).TransformPoint(new());
+        if (Math.Abs(pageOrigin.X) > 1 || Math.Abs(pageFrame.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1
+            || Math.Abs(pageOrigin.Y + pageFrame.ActualHeight - ((FrameworkElement)Content).ActualHeight) > 1)
+            throw new Exception("The page is not flush with the window sides and bottom.");
         var host = (Microsoft.UI.Xaml.Controls.Border)Content;
-        var clip = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(host).Clip as Microsoft.UI.Composition.CompositionGeometricClip;
-        var rounded = clip?.Geometry as Microsoft.UI.Composition.CompositionRoundedRectangleGeometry;
-        if (rounded == null || rounded.CornerRadius.X != App.Appearance.BackplateRadius
-            || Math.Abs(rounded.Size.X - host.ActualWidth) > 1 || Math.Abs(rounded.Size.Y - host.ActualHeight) > 1)
+        var clip = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(host).Clip as Microsoft.UI.Composition.RectangleClip;
+        if (clip == null || clip.TopLeftRadius.X != App.Appearance.BackplateRadius
+            || clip.BottomLeftRadius.X != host.CornerRadius.BottomLeft
+            || Math.Abs(clip.Right - host.ActualWidth) > 1 || Math.Abs(clip.Bottom - host.ActualHeight) > 1)
             throw new Exception("The full content composition layer is not clipped to the rounded silhouette.");
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var origin = new Native.Point(); ClientToScreen(handle, ref origin);
@@ -81,7 +96,7 @@ internal sealed partial class AiWindow
             var shape = backplateShape!.Value;
             int w = shape.Width, h = shape.Height, r = shape.Radius;
             if (w != AppWindow.Size.Width || h != AppWindow.Size.Height) throw new Exception("Backplate clip retained its previous size.");
-            var expected = CreateRoundRectRgn(0, 0, w + 1, h + 1, r * 2, r * 2);
+            var expected = CreateSilhouette(w, h, r, shape.BottomRadius);
             try { if (!EqualRgn(region, expected)) throw new Exception("Native backplate no longer uses the configured circular corners."); }
             finally { DeleteObject(expected); }
             if (Detached) resizeFrame!.VerifyEdges();
@@ -95,6 +110,26 @@ internal sealed partial class AiWindow
         }
         finally { DeleteObject(region); }
     }
+    static IntPtr CreateSilhouette(int width, int height, int topRadius, int bottomRadius)
+    {
+        var result = CreateRoundRectRgn(0, 0, width + 1, height + 1, topRadius * 2, topRadius * 2);
+        var lower = CreateRoundRectRgn(0, 0, width + 1, height + 1, bottomRadius * 2, bottomRadius * 2);
+        var half = CreateRectRgn(0, 0, width + 1, height / 2);
+        try
+        {
+            if (result == IntPtr.Zero || lower == IntPtr.Zero || half == IntPtr.Zero
+                || CombineRgn(result, result, half, 1) == 0) throw new Exception("无法创建顶部圆角轮廓。");
+            SetRectRgn(half, 0, height / 2, width + 1, height + 1);
+            if (CombineRgn(lower, lower, half, 1) == 0 || CombineRgn(result, result, lower, 2) == 0)
+                throw new Exception("无法创建底部圆角轮廓。");
+            return result;
+        }
+        catch { if (result != IntPtr.Zero) DeleteObject(result); throw; }
+        finally { if (lower != IntPtr.Zero) DeleteObject(lower); if (half != IntPtr.Zero) DeleteObject(half); }
+    }
+    [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")] static extern bool SetRectRgn(IntPtr region, int left, int top, int right, int bottom);
+    [DllImport("gdi32.dll")] static extern int CombineRgn(IntPtr destination, IntPtr first, IntPtr second, int mode);
     [DllImport("user32.dll", EntryPoint = "GetWindowRect")] static extern bool GetBackplateWindowRect(IntPtr window, out Native.Rect rect);
     [DllImport("user32.dll", EntryPoint = "GetClientRect")] static extern bool GetBackplateClientRect(IntPtr window, out Native.Rect rect);
     [DllImport("gdi32.dll")] static extern bool EqualRgn(IntPtr first, IntPtr second);

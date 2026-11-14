@@ -12,7 +12,7 @@ internal sealed partial class AiWindow
     readonly HashSet<WebView2> maskSurfaces=[];
     AiOptions? cornerPreview;
     internal void PreviewCorners(bool follow,int radius)
-    {cornerPreview=options.Data with{FollowGlobalCorners=follow,WebCornerRadius=radius};foreach(var view in browsers.Children.OfType<WebView2>().ToArray())_ = MaskBrowser(view,false);}
+    {cornerPreview=options.Data with{FollowGlobalCorners=follow,WebCornerRadius=radius};RefreshBackplateCorners();foreach(var view in browsers.Children.OfType<WebView2>().ToArray())_ = MaskBrowser(view,false);}
     double ViewCornerRadius(WebView2 view)=>AiPolicy.CornerRadius(cornerPreview??options.Data,
         PanelTheme.Value<CornerRadius>("CardRadius").TopLeft,view.ActualWidth,view.ActualHeight);
     void InitializeViewportMask()

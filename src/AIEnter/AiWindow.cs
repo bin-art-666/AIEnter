@@ -18,6 +18,7 @@ internal sealed partial class AiWindow : PanelWindow
     readonly Grid root = PanelTheme.Layout();
     readonly SystemBackdropElement backplate = PanelTheme.BackdropSurface();
     readonly Grid browsers = new();
+    Border pageFrame = null!;
     readonly TextBlock status = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap };
     readonly List<Choice> providerChoices = [];
     readonly Button expand = Icon("\uE740", "展开为独立窗口");
@@ -82,6 +83,7 @@ internal sealed partial class AiWindow : PanelWindow
         InitializeAiHeaderLayout();
         var browserHost = new Grid(); browserHost.Children.Add(browsers); InitializeDropInbox(browserHost);
         var content = new Border { CornerRadius = PanelTheme.Value<CornerRadius>("CardRadius"), Child = dropContent, Background = new SolidColorBrush(Colors.Transparent) };
+        pageFrame = content;
         PanelTheme.Track(content, static border => border.CornerRadius = PanelTheme.Value<CornerRadius>("CardRadius"));
         InitializeViewportMask();
         Grid.SetRow(content, 1); root.Children.Add(content);

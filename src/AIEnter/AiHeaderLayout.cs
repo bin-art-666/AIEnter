@@ -20,6 +20,6 @@ internal sealed partial class AiWindow
         aiHeader.Margin = new Thickness(0, Detached ? 6 : 0, 0, 0);
         aiNavigation.MinWidth = 0;
         aiNavigation.HorizontalAlignment = HorizontalAlignment.Stretch;
-        QueueProviderReveal(); UpdateFloatingCaption();
+        QueueProviderReveal(); UpdateFloatingCaption(); RefreshBackplateCorners();
     }
 }
