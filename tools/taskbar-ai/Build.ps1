@@ -16,7 +16,7 @@ foreach ($pair in @(@('libc++.dll', 'libc++.whl'), @('libunwind.dll', 'libunwind
 }
 $library = 'aienter-taskbar-ai_' + (Get-Date -Format 'yyyyMMddHHmmss') + '.dll'
 $arguments = @('-std=c++23', '-O2', '-shared', '-DUNICODE', '-D_UNICODE', '-DWINVER=0x0A00',
-    '-D_WIN32_WINNT=0x0A00', '-DWH_MOD', '-DWH_MOD_ID=L"aienter-taskbar-ai"', '-DWH_MOD_VERSION=L"1.5.1"',
+    '-D_WIN32_WINNT=0x0A00', '-DWH_MOD', '-DWH_MOD_ID=L"aienter-taskbar-ai"', '-DWH_MOD_VERSION=L"2.0.0"',
     '-include', 'windhawk_api.h', '-target', 'x86_64-w64-mingw32', '-Wl,--export-all-symbols',
     (Join-Path $runtime 'Engine\1.7.3\64\windhawk.lib'),
     (Join-Path $PSScriptRoot 'aienter-taskbar-ai.wh.cpp'), '-o', (Join-Path $dllRoot $library),
@@ -34,7 +34,7 @@ LoggingEnabled=1
 DebugLoggingEnabled=0
 Include=explorer.exe
 Architecture=x86-64
-Version=1.5.1
+Version=2.0.0
 SettingsChangeTime=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
 [Settings]
 executable=$program

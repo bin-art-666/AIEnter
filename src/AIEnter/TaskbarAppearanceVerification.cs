@@ -26,6 +26,7 @@ public partial class App
                         var fields = File.ReadAllLines(native).Where(line => line.Contains('=')).Select(line => line.Split('=', 2))
                             .GroupBy(pair => pair[0]).ToDictionary(group => group.Key, group => group.Last()[1]);
                         if (fields.GetValueOrDefault("GlowActive") == glow.ToString() && fields.GetValueOrDefault("ArtworkSize") == size.ToString()
+                            && fields.GetValueOrDefault("ColorFlowSpeed") == expectedAppearance.FlowSpeed.ToString()
                             && fields.GetValueOrDefault("GlowRange") == expectedAppearance.GlowRange.ToString()
                             && fields.GetValueOrDefault("GlowIntensity") == expectedAppearance.GlowIntensity.ToString()
                             && fields.GetValueOrDefault("ButtonWidth") == (size + 4).ToString()
@@ -54,11 +55,13 @@ public partial class App
             PreviewAppearance(new UiAppearance(GlowEnabled: false)); await WaitFor(0);
             PreviewAppearance(new UiAppearance(GlowIntensity: 0)); await WaitFor(0);
             PreviewAppearance(new UiAppearance(GlowRange: 0)); await WaitFor(0);
+            PreviewAppearance(new UiAppearance(FlowSpeed: 0)); await WaitFor(1);
+            PreviewAppearance(new UiAppearance(FlowSpeed: 1800)); await WaitFor(1);
             PreviewAppearance(null); await WaitFor(1);
             Ai.Hide(); await WaitFor(0);
             File.WriteAllText(resultPath, JsonSerializer.Serialize(new { passed = true, localPageOnly = true,
                 showLights = true, hideClears = true, settingsOnlyStaysOff = true, iconPreview = true,
-                previewRollback = true, disabledAndZeroClear = true, compactCircle = true, glowDoesNotReserveWidth = true }));
+                flowSpeedPreviewAndRollback = true, previewRollback = true, disabledAndZeroClear = true, compactCircle = true, glowDoesNotReserveWidth = true }));
         }
         catch (Exception error)
         {

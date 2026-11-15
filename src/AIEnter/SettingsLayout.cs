@@ -196,7 +196,7 @@ internal sealed partial class SettingsWindow
         }
         else if (page == "任务栏")
         {
-            var d = defaults.Appearance ?? new(); taskbarSize.Value = d.TaskbarIconSize; glow.IsOn = d.GlowEnabled; glowRange.Value = d.GlowRange; glowIntensity.Value = d.GlowIntensity;
+            var d = defaults.Appearance ?? new(); taskbarSize.Value = d.TaskbarIconSize; flowSpeed.Value = d.FlowSpeed; glow.IsOn = d.GlowEnabled; glowRange.Value = d.GlowRange; glowIntensity.Value = d.GlowIntensity;
         }
         else if (page == "外观")
         {

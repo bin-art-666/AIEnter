@@ -4,6 +4,7 @@
   "ButtonSize": 30,
   "WindowPadding": 4,
   "TaskbarIconSize": 25,
+  "FlowSpeed": 200,
   "GlowEnabled": true,
   "GlowRange": 6,
   "GlowIntensity": 100,

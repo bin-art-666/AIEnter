@@ -2,7 +2,7 @@
 // @id              aienter-taskbar-ai
 // @name            AIEnter AI beside clock
 // @description     Adds an AI button in the real taskbar layout immediately after the clock.
-// @version         1.5.1
+// @version         2.0.0
 // @author          AIEnter
 // @include         explorer.exe
 // @architecture    x86-64
@@ -611,20 +611,21 @@ namespace taskbar = folder_menus_taskbar_xaml;
 
 static HANDLE g_stop = nullptr, g_refresh = nullptr, g_appearanceEvent = nullptr, g_mapping = nullptr;
 static volatile LONG* g_shared = nullptr;
-struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 26, enabled = 1, range = 9, intensity = 77, open = 0, sequence = 0; };
+struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 26, enabled = 1, range = 9, intensity = 77, open = 0, sequence = 0, flowSpeed = 200; };
 static AppearanceState g_appearance;
 static AppearanceState ReadAppearance() {
     AppearanceState state;
     for (int attempt = 0; attempt < 32 && g_shared; ++attempt) {
         LONG before = g_shared[7]; if (before & 1) { Sleep(1); continue; }
         MemoryBarrier();
-        LONG values[8]; for (int i = 0; i < 8; ++i) values[i] = g_shared[i];
+        LONG values[9]; for (int i = 0; i < 9; ++i) values[i] = g_shared[i];
         MemoryBarrier();
         if (before != g_shared[7]) { Sleep(1); continue; }
         if (values[0] != 0x41494531) break;
-        state = {values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7]};
+        state = {values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]};
         break;
     }
+    state.flowSpeed = std::clamp(state.flowSpeed, 0L, 1800L);
     state.icon = std::clamp(state.icon, 16L, 36L); state.range = std::clamp(state.range, 0L, 12L);
     state.intensity = std::clamp(state.intensity, 0L, 100L);
     return state;
@@ -647,7 +648,11 @@ struct AttachedButton {
     slot::Lease lease;
     winrt::event_token click{}, rightTap{}, layout{}, dragEnter{}, dragOver{}, dragLeave{}, drop{}, hoverTick{};
     winrt::Windows::Foundation::IInspectable pointerPress{nullptr};
-    xaml::DispatcherTimer hoverTimer{nullptr};
+    xaml::DispatcherTimer hoverTimer{nullptr}, flowTimer{nullptr};
+    xaml::Media::Imaging::WriteableBitmap flowBitmap{nullptr};
+    winrt::event_token flowTick{};
+    ULONGLONG flowStarted = 0;
+    double flowTime = 0;
     xaml::Media::Brush normalBorder{nullptr};
     xaml::Thickness normalThickness{};
     bool dragging = false;
@@ -688,11 +693,71 @@ static void UpdateButtonAppearance() {
     }
     bool active = g_appearance.open && g_appearance.enabled && range > 0 && g_appearance.intensity > 0;
     state.glow.Opacity(active ? g_appearance.intensity / 100.0 : 0.0);
+    Wh_SetIntValue(L"ColorFlowSpeed", g_appearance.flowSpeed);
     Wh_SetIntValue(L"GlowActive", active ? 1 : 0);
     Wh_SetIntValue(L"GlowRange", g_appearance.range); Wh_SetIntValue(L"GlowIntensity", g_appearance.intensity);
     Wh_SetIntValue(L"ButtonRoundClipped", 1); Wh_SetIntValue(L"GlowOverlayNonInteractive", 1);
     Wh_SetIntValue(L"CompactButtonPadding", 2); Wh_SetIntValue(L"ButtonHeight", (int)diameter);
     Wh_SetIntValue(L"ArtworkCircleCropped", 1); Wh_SetIntValue(L"ArtworkSize", (int)iconSize); Wh_SetIntValue(L"ButtonWidth", (int)state.button.Width());
+}
+// Live color field: fixed sphere silhouette; only the interior palette evolves.
+// No network, image decoding per frame, or movement of the taskbar button.
+struct FlowBufferAccess : IUnknown {
+    virtual HRESULT __stdcall Buffer(BYTE** value) = 0;
+};
+__CRT_UUID_DECL(FlowBufferAccess, 0x905a0fef, 0xbc53, 0x11df, 0x8c, 0x49, 0x00, 0x1e, 0x4f, 0xc6, 0x86, 0xda)
+static void PaintFlow(AttachedButton& state) {
+    constexpr int side = 64;
+    BYTE* pixels = nullptr;
+    winrt::check_hresult(state.flowBitmap.PixelBuffer().as<FlowBufferAccess>()->Buffer(&pixels));
+    ULONGLONG now = GetTickCount64();
+    state.flowTime += std::min((now - state.flowStarted) / 1000.0, .25) * g_appearance.flowSpeed / 100.0;
+    state.flowStarted = now;
+    double t = state.flowTime;
+    struct ColorSource { double x, y, r, g, b; };
+    ColorSource sources[] = {
+        {-.48 + .25 * sin(t * .24), -.30 + .25 * cos(t * .19), 255, 159, 202},
+        {.22 + .32 * cos(t * .21), -.50 + .23 * sin(t * .27), 255, 240, 143},
+        {.48 + .30 * sin(t * .18 + 1), .26 + .33 * cos(t * .25), 143, 87, 249},
+        {-.22 + .34 * cos(t * .23 + 2), .55 + .23 * sin(t * .20), 113, 230, 247},
+        {-.05 + .35 * sin(t * .16 + 3), -.05 + .36 * cos(t * .22), 240, 167, 248}
+    };
+    for (int y = 0; y < side; ++y) for (int x = 0; x < side; ++x) {
+        double nx = (x + .5) / (side / 2.0) - 1, ny = (y + .5) / (side / 2.0) - 1;
+        double radius = nx * nx + ny * ny;
+        double alpha = std::clamp((1 - sqrt(radius)) * side / 2.0, 0.0, 1.0);
+        double sum = 0, r = 0, g = 0, b = 0;
+        for (auto const& source : sources) {
+            double dx = nx - source.x, dy = ny - source.y;
+            // Smooth moving boundaries keep distinct colors at taskbar sizes.
+            double weight = exp(-5.5 * (dx * dx + dy * dy));
+            sum += weight; r += weight * source.r; g += weight * source.g; b += weight * source.b;
+        }
+        double light = .82 + .18 * sqrt(std::max(0.0, 1 - radius));
+        double shine = .24 * exp(-7 * ((nx + .32) * (nx + .32) + (ny + .48) * (ny + .48)));
+        auto channel = [&](double value) { return (BYTE)(std::clamp(value / sum * light * (1 - shine) + 255 * shine, 0.0, 255.0) * alpha); };
+        int offset = (y * side + x) * 4;
+        pixels[offset] = channel(b); pixels[offset + 1] = channel(g); pixels[offset + 2] = channel(r); pixels[offset + 3] = (BYTE)(255 * alpha);
+    }
+    state.flowBitmap.Invalidate();
+}
+static void StartFlow(AttachedButton& state) {
+    BOOL animations = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
+    if (!animations) { Wh_SetIntValue(L"ColorFlowActive", 0); return; }
+    state.flowBitmap = xaml::Media::Imaging::WriteableBitmap(64, 64);
+    state.flowStarted = GetTickCount64();
+    PaintFlow(state);
+    xaml::Media::ImageBrush fill; fill.ImageSource(state.flowBitmap); fill.Stretch(xaml::Media::Stretch::UniformToFill);
+    state.icon.Fill(fill);
+    state.flowTimer = xaml::DispatcherTimer();
+    state.flowTimer.Interval(std::chrono::milliseconds(50));
+    state.flowTick = state.flowTimer.Tick([](auto&&, auto&&) {
+        if (g_unloading || !g_attached || !g_attached->flowBitmap) return;
+        try { PaintFlow(*g_attached); }
+        catch (...) { g_attached->flowTimer.Stop(); Wh_SetIntValue(L"ColorFlowActive", 0); }
+    });
+    state.flowTimer.Start(); Wh_SetIntValue(L"ColorFlowActive", 1);
 }
 static void PositionGlow(AttachedButton& state) {
     auto buttonPoint = state.button.TransformToVisual(state.parent).TransformPoint({0, 0});
@@ -871,6 +936,7 @@ static void RemoveButton() {
     // Detach each handler independently so one stale COM reference cannot prevent slot release.
     auto attempt = [](auto&& action) { try { action(); } catch (...) {} };
     if (state->button) {
+        attempt([&] { if (state->flowTimer) { state->flowTimer.Stop(); state->flowTimer.Tick(state->flowTick); } });
         attempt([&] { state->artwork.ImageOpened(state->artworkOpened); });
         attempt([&] { state->artwork.ImageFailed(state->artworkFailed); });
         attempt([&] { if (state->hoverTimer) { state->hoverTimer.Stop(); state->hoverTimer.Tick(state->hoverTick); } });
@@ -991,6 +1057,7 @@ static void AttachButton(void* parameter) {
         Wh_SetIntValue(L"ArtworkLoaded", 0);
         Wh_Log(L"Taskbar artwork could not be decoded.");
     });
+    try { StartFlow(*state); } catch (...) { Wh_SetIntValue(L"ColorFlowActive", 0); Wh_Log(L"Color flow unavailable; keeping static artwork."); }
     state->layout = button.LayoutUpdated([state](auto&&, auto&&) {
         try {
             if (state->button.ActualWidth() < 1) return;
@@ -1057,8 +1124,8 @@ BOOL Wh_ModInit() {
     g_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_refresh = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     g_appearanceEvent = CreateEventW(nullptr, FALSE, FALSE, L"Local\\AIEnter.TaskbarAppearanceChanged");
-    g_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, 32, L"Local\\AIEnter.TaskbarAppearance");
-    if (g_mapping) g_shared = static_cast<volatile LONG*>(MapViewOfFile(g_mapping, FILE_MAP_READ, 0, 0, 32));
+    g_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, 40, L"Local\\AIEnter.TaskbarAppearance.v2");
+    if (g_mapping) g_shared = static_cast<volatile LONG*>(MapViewOfFile(g_mapping, FILE_MAP_READ, 0, 0, 40));
     if (!g_stop || !g_refresh || !g_appearanceEvent || !g_mapping || !g_shared) {
         if (g_stop) CloseHandle(g_stop);
         if (g_refresh) CloseHandle(g_refresh);

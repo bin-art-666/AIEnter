@@ -19,6 +19,7 @@ internal sealed partial class SettingsWindow : PanelWindow
     readonly Slider buttonSize = Slider("按钮高度", 28, 44);
     readonly Slider padding = Slider("窗口内边距", 0, 16);
     readonly Slider taskbarSize = Slider("任务栏图标大小", 16, 36);
+    readonly Slider flowSpeed = Slider("色彩流动速度（%）", 0, 1800);
     readonly ToggleSwitch glow = new() { Header = "对话打开时显示光晕", OnContent = "开启", OffContent = "关闭" };
     readonly Slider glowRange = Slider("光晕范围", 0, 12);
     readonly Slider glowIntensity = Slider("光晕强度（%）", 0, 100);
@@ -48,7 +49,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var fields = new StackPanel { Spacing = 16 };
         fields.Children.Add(Section("任务栏图标"));
-        fields.Children.Add(taskbarSize); fields.Children.Add(glow); fields.Children.Add(glowRange); fields.Children.Add(glowIntensity);
+        fields.Children.Add(taskbarSize); fields.Children.Add(flowSpeed); fields.Children.Add(PanelTheme.Hint("0 暂停，100 为初始流速，200 为当前流速，1800 最快；调整立即预览。")); fields.Children.Add(glow); fields.Children.Add(glowRange); fields.Children.Add(glowIntensity);
         fields.Children.Add(PanelTheme.Hint("图标紧贴圆形按钮，光晕独立绘制，不额外撑宽占位，并受任务栏可用高度限制。只有对话展开时显示光晕，设置窗口不会点亮。"));
         fields.Children.Add(Section("AI 与窗口"));
         fields.Children.Add(Section("全局快捷键"));
@@ -71,7 +72,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         followCorners.Toggled += (_, _) => { RefreshFields(); Preview(); };
         radius.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
 
-        foreach (var slider in new[] { backplateRadius, backplateTransparency, backplateBlur, buttonRadius, buttonSize, padding, taskbarSize, glowRange, glowIntensity })
+        foreach (var slider in new[] { backplateRadius, backplateTransparency, backplateBlur, buttonRadius, buttonSize, padding, taskbarSize, flowSpeed, glowRange, glowIntensity })
             slider.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
         taskbarSize.ValueChanged += (_, _) => UpdateTaskbarSizeLabel();
         glow.Toggled += (_, _) => { RefreshFields(); Preview(); RefreshDirty(); };
@@ -142,12 +143,13 @@ internal sealed partial class SettingsWindow : PanelWindow
         backplateRadius.Value = value.BackplateRadius; backplateTransparency.Value = value.BackplateTransparency; backplateBlur.Value = value.BackplateBlur;
         buttonRadius.Value = value.ButtonRadius; buttonSize.Value = value.ButtonSize;
         padding.Value = value.WindowPadding; taskbarSize.Value = value.TaskbarIconSize; UpdateTaskbarSizeLabel();
+        flowSpeed.Value = value.FlowSpeed;
         glow.IsOn = value.GlowEnabled; glowRange.Value = value.GlowRange; glowIntensity.Value = value.GlowIntensity;
         UpdateAppearancePreview();
     }
     void UpdateTaskbarSizeLabel() { }
     UiAppearance ReadAppearance() => new((int)buttonRadius.Value, (int)buttonSize.Value, (int)padding.Value,
-        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value, (int)backplateBlur.Value);
+        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value, (int)backplateBlur.Value, (int)flowSpeed.Value);
     void Preview()
     {
         if (syncing) return;

@@ -9,6 +9,7 @@ internal static class UiDefaults
     internal const int ButtonRadius = 16;
     internal const int ButtonSize = 30;
     internal const int WindowPadding = 4;
+    internal const int FlowSpeed = 200;
     internal const int TaskbarIconSize = 25;
     internal const bool GlowEnabled = true;
     internal const int GlowRange = 6;
