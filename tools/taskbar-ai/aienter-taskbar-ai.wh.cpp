@@ -2,7 +2,7 @@
 // @id              aienter-taskbar-ai
 // @name            AIEnter AI beside clock
 // @description     Adds an AI button in the real taskbar layout immediately after the clock.
-// @version         1.2.0
+// @version         1.3.0
 // @author          AIEnter
 // @include         explorer.exe
 // @architecture    x86-64

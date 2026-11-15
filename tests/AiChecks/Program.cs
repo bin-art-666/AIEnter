@@ -36,7 +36,7 @@ try
     store.Save(customCorners);Check(new AiOptionsStore(path).Data.WebCornerRadius==40&&!new AiOptionsStore(path).Data.FollowGlobalCorners,"Custom corners persist");
     Reject(()=>store.Save(customCorners with{WebCornerRadius=41}));Reject(()=>store.Save(customCorners with{WebCornerRadius=-1}));
     store.Save(store.Data with{FollowGlobalCorners=true});
-    Check(store.Data.DockWidth == 415.5, "Older/missing settings retain the familiar dock width");
+    Check(store.Data.DockWidth == 388.5, "Older/missing settings use the captured dock width");
     Check(store.Data.DockHeight == 829 && store.Data.DockTopOffset == 0, "Legacy configurations retain default panel dimensions");
     var dock = AiPolicy.DockBounds(430, 660, new(0, 24, 1920, 1200), 144);
     Check(dock == new AiBounds(1257, 216, 645, 990), "Panel anchors to bottom-right with a 12 DIP gap at 150 percent scale");
@@ -129,7 +129,7 @@ try
         Reject(() => appearanceStore.Save(appearanceStore.Data with { Appearance = invalid }));
 
     Check(new UiAppearance() == new UiAppearance(16,30,4,26,true,9,77,24,"#1C14DDFF","#FF32D4EB"), "Reset appearance matches the captured user settings");
-    Check(new AiOptions().DockWidth == 415.5 && new AiOptions().DockHeight == 829
+    Check(new AiOptions().DockWidth == 388.5 && new AiOptions().DockHeight == 829
         && !new AiOptions().FollowGlobalCorners && new AiOptions().WebCornerRadius == 28,
         "Fresh panel dimensions and web corners match the captured defaults");
     string explicitCorners = Path.Combine(root, "explicit-corners.json");

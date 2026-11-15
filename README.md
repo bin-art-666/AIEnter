@@ -15,13 +15,13 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 - 外观实时预览，保存后记住，关闭设置撤销未保存的预览。
 - 设置窗口按 AI 服务、窗口与操作、任务栏、外观、备份与恢复分组；支持数值微调、预览和未保存更改确认。
 
-默认外观：面板 415.5×829 DIP，网页圆角 28 DIP、背板圆角 24 DIP；图标 26 DIP，光晕范围 9 DIP、强度 77%；普通按钮为半透明青色，选中按钮为亮青色。顶栏默认顺序为 DeepSeek、ChatGPT、豆包、小艺、Gemini、Grok、Kimi。完整清单见 [UI 默认值](config/ui-defaults.json)。已有显式设置不被覆盖。
+默认设置来自当前 AIEnter 配置：悬浮、不置顶，面板 388.5×829 DIP；网页圆角 28 DIP、背板圆角 24 DIP；任务栏图标 25 DIP，光晕范围 6 DIP、强度 100%；普通按钮为半透明青色，选中按钮为亮青色。默认快捷键 Alt+Space。顶栏顺序为 DeepSeek、ChatGPT、豆包、小艺、Gemini、Grok、Kimi。UI 风格为默认预设。完整清单见 [UI 默认值](config/ui-defaults.json)。这些默认只用于新安装或恢复全部默认，升级不覆盖既有设置；本机窗口坐标、登录资料和网址查询参数不会作为默认值发布。
 
 本项目嵌入 AI 官方网页，首次使用请自行登录；不需要在应用中配置 API 密钥。账号、网页登录资料和设置保存在本机 `%LOCALAPPDATA%\AIEnter`，不随源码上传。
 
 ## 构建与运行
 
-当前正式版为 [v1.2.0](https://github.com/bin-art-666/AIEnter/releases/tag/v1.2.0)。下载 `AIEnter-v1.2.0-win-x64.zip`，完整解压后运行 `AIEnter.exe`，不要只复制单个 EXE。程序包包含 .NET 与 Windows App SDK 运行依赖，仍需要 WebView2 Runtime。
+当前正式版为 [v1.3.0](https://github.com/bin-art-666/AIEnter/releases/tag/v1.3.0)。下载 `AIEnter-v1.3.0-win-x64.zip`，完整解压后运行 `AIEnter.exe`，不要只复制单个 EXE。程序包包含 .NET 与 Windows App SDK 运行依赖，仍需要 WebView2 Runtime。
 
 时间右侧的真实任务栏按钮需要另行安装 Windhawk，导入发行包内的 `Taskbar/aienter-taskbar-ai.wh.cpp` 并将其 `executable` 设置为解压后的 `AIEnter.exe` 完整路径。具体步骤见 [发行版使用说明](docs/release-usage.md)。发行包不包含用户设置、登录缓存和 Windhawk 运行时，也不自动配置开机自启。
 

@@ -12,7 +12,7 @@ internal sealed record AiBounds(int X, int Y, int Width, int Height);
 internal enum AiPanelEdge { Left, Top, Bottom }
 internal sealed record AiOptions(int Version = 2, string Provider = UiDefaults.Provider, string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = UiDefaults.Pinned,
     Dictionary<string, AiBounds>? Layouts = null, double DockWidth = UiDefaults.DockWidth, double DockHeight = UiDefaults.DockHeight, double DockTopOffset = 0,
-    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null, string? DefaultProvider = null, string Hotkey = "");
+    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null, string? DefaultProvider = null, string Hotkey = UiDefaults.Hotkey);
 internal static partial class AiPolicy
 {
     internal static double CornerRadius(AiOptions options,double global,double width,double height)

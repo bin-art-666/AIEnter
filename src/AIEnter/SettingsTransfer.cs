@@ -9,7 +9,7 @@ internal sealed partial class SettingsWindow
 {
     sealed record PortableSettings(int FormatVersion = 1, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null,
         string? DefaultProvider = null, bool FloatingPanel = true, bool Pinned = false,
-        bool FollowGlobalCorners = false, int WebCornerRadius = 28, UiAppearance? Appearance = null, string Hotkey = "");
+        bool FollowGlobalCorners = false, int WebCornerRadius = 28, UiAppearance? Appearance = null, string Hotkey = UiDefaults.Hotkey);
     bool resetLayouts;
 
     void InitializeSettingsTransfer(StackPanel fields)
@@ -81,7 +81,7 @@ internal sealed partial class SettingsWindow
         provider.SelectedItem = provider.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == UiDefaults.Provider);
         floatingMode.IsOn = UiDefaults.FloatingPanel; pinned.IsOn = UiDefaults.Pinned;
         followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius;
-        LoadAppearance(defaults.Appearance ?? new()); hotkey.Text = "";
+        LoadAppearance(defaults.Appearance ?? new()); hotkey.Text = UiDefaults.Hotkey;
         resetPanelSize = true; resetLayouts = true; RefreshFields(); Preview();
         RefreshDirty(); status.Text = "已预览全部默认设置；保存后重置 AI 列表、界面和窗口位置。网页登录资料不变。";
     }

@@ -173,7 +173,7 @@ internal sealed partial class SettingsWindow
         }
         else if (page == "窗口与操作")
         {
-            floatingMode.IsOn = UiDefaults.FloatingPanel; pinned.IsOn = UiDefaults.Pinned; hotkey.Text = "";
+            floatingMode.IsOn = UiDefaults.FloatingPanel; pinned.IsOn = UiDefaults.Pinned; hotkey.Text = UiDefaults.Hotkey;
         }
         else if (page == "任务栏")
         {

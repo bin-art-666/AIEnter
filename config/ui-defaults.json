@@ -1,22 +1,23 @@
 {
-  "CapturedOn": "2026-11-14",
+  "CapturedOn": "2026-11-15",
   "ButtonRadius": 16,
   "ButtonSize": 30,
   "WindowPadding": 4,
-  "TaskbarIconSize": 26,
+  "TaskbarIconSize": 25,
   "GlowEnabled": true,
-  "GlowRange": 9,
-  "GlowIntensity": 77,
+  "GlowRange": 6,
+  "GlowIntensity": 100,
   "BackplateRadius": 24,
   "ButtonColor": "#1C14DDFF",
   "SelectedButtonColor": "#FF32D4EB",
   "Provider": "deepseek",
   "Pinned": false,
   "FloatingPanel": true,
-  "DockWidth": 415.5,
+  "DockWidth": 388.5,
   "DockHeight": 829,
   "FollowGlobalCorners": false,
   "WebCornerRadius": 28,
+  "Hotkey": "Alt+SPACE",
   "ProviderOrder": [
     "deepseek",
     "chatgpt",
@@ -30,7 +31,7 @@
     {
       "Id": "ai-gemini",
       "Name": "Gemini",
-      "Url": "https://gemini.google.com/app?utm_source=app_launcher&utm_medium=owned&utm_campaign=base_all"
+      "Url": "https://gemini.google.com/app"
     },
     {
       "Id": "ai-grok",
@@ -47,5 +48,15 @@
   "PanelAnimation": "FloatFade",
   "PanelEnterMilliseconds": 180,
   "PanelExitMilliseconds": 130,
-  "PanelMotionOffset": 16
+  "PanelMotionOffset": 16,
+  "UiStyle": {
+    "Preset": "Default",
+    "Roundness": 8,
+    "Density": "Standard",
+    "Icons": "Standard",
+    "Tint": 22,
+    "Shade": 78,
+    "Motion": "Gentle",
+    "Duration": 160
+  }
 }
