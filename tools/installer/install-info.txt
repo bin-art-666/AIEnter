@@ -1,0 +1,9 @@
+AIEnter 2.0.0 安装说明
+
+适用于 Windows 11 x64。程序文件包含在安装包内；首次安装会联网下载并校验官方 Windhawk 1.7.3 组件（约 142 MB），然后自动配置时间右侧的 AI 图标。
+
+需要已安装 Microsoft Edge WebView2 Runtime；Windows 11 通常已包含。AI 网站账号需自行登录。
+
+可选择创建桌面快捷方式及登录自启，默认不勾选。卸载会停止并移除本安装目录的任务栏组件，保留用户聊天网站登录资料与设置。
+
+运行组件来源：https://github.com/ramensoftware/windhawk/releases/tag/v1.7.3
