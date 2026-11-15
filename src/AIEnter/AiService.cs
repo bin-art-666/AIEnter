@@ -6,6 +6,7 @@ internal sealed class AiService
     readonly bool verification;
     AiWindow? window;
     internal AiOptionsStore Options { get; }
+    internal bool HasPendingTransfer => window?.HasPendingDrop == true;
     internal bool Busy => window?.Initializing == true;
     internal bool IsOpen => window?.IsOpen == true;
     internal bool DockedOpen=>window is {IsOpen:true,Detached:false};
@@ -37,6 +38,17 @@ internal sealed class AiService
         if (SessionState.Locked == true) return;
         window ??= new AiWindow(Options, directory, display, () => Changed?.Invoke(), verification);
         if (activate) await window.Open(display, display.Info.Work.Top, true); else await window.OpenForDragHover(display);
+    }
+    internal async Task<bool> ReceiveFiles(string[] paths, string provider, DesktopMonitor display)
+    {
+        if (!AiPolicy.AvailableProviders(Options.Data).Contains(provider)) throw new IOException("目标 AI 已移除。");
+        var view = await DropPayload.FilesView(paths);
+        Select(provider);
+        await OpenForDrop(display, true).WaitAsync(TimeSpan.FromSeconds(20));
+        if (Options.Data.Provider != provider) throw new IOException("接收期间 AI 已切换，请回到原 AI 后重新拖入。");
+        // Do not bypass ReceiveDrop: parsing, target locking, pending content,
+        // upload and retry are shared with normal window drops.
+        return await ReceiveDrop(view);
     }
     internal Task<bool> ReceivePayload(DropPayload payload, string provider) => window?.ReceivePayload(payload, provider) ?? Task.FromResult(false);
     internal void DropError(string text) => window?.ReportDropError(text);

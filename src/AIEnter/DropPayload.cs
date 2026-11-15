@@ -12,6 +12,20 @@ internal sealed partial class DropPayload : IDisposable
     internal string Text = "";
     internal string[] Files = [];
     internal byte[]? Bitmap;
+    // Screenshots are normal StorageItems, exactly like an Explorer file drop.
+    internal static async Task<DataPackageView> FilesView(string[] paths)
+    {
+        if (paths.Length is < 1 or > 12) throw new IOException("一次可放入 1～12 个文件。");
+        var files = new List<Windows.Storage.IStorageItem>();
+        foreach (string path in paths)
+        {
+            if (!Path.IsPathFullyQualified(path)) throw new IOException("文件路径无效。");
+            files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path).AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+        package.SetStorageItems(files, true);
+        return package.GetView();
+    }
     internal static bool Supported(DataPackageView view) => DropTransfer.Supported(view) || view.Contains(StandardDataFormats.Bitmap);
     internal static async Task<DropPayload> Read(DataPackageView view)
     {

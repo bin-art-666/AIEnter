@@ -78,6 +78,7 @@ internal sealed partial class SettingsWindow
                 if (title == "AI 与窗口") continue;
                 Flush();
                 if (title == "任务栏图标") { pageName = "任务栏"; cardTitle = "任务栏入口"; }
+                else if (title == "截图") { pageName = "任务栏"; cardTitle = title; }
                 else if (title == "全局快捷键") { pageName = "窗口与操作"; cardTitle = title; }
                 else if (title == "管理 AI 与顶栏排序") { pageName = "AI 服务"; cardTitle = "AI 列表与顺序"; }
                 else if (title == "窗口外观") { pageName = "外观"; cardTitle = "窗口外观"; }
@@ -196,11 +197,11 @@ internal sealed partial class SettingsWindow
         }
         else if (page == "任务栏")
         {
-            var d = defaults.Appearance ?? new(); taskbarSize.Value = d.TaskbarIconSize; flowSpeed.Value = d.FlowSpeed; glow.IsOn = d.GlowEnabled; glowRange.Value = d.GlowRange; glowIntensity.Value = d.GlowIntensity;
+            var d = defaults.Appearance ?? new(); taskbarSize.Value = d.TaskbarIconSize; flowSpeed.Value = d.FlowSpeed; screenshotDoubleClick.IsOn = d.ScreenshotDoubleClick; screenshotSeconds.Value = d.ScreenshotSeconds; screenshotFolder.Text = d.ScreenshotFolder; glow.IsOn = d.GlowEnabled; glowRange.Value = d.GlowRange; glowIntensity.Value = d.GlowIntensity;
         }
         else if (page == "外观")
         {
-            LoadAppearance(defaults.Appearance ?? new()); followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius; resetPanelSize = true;
+            LoadVisualDefaults(); followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius; resetPanelSize = true;
         }
         syncing = false; RefreshFields(); Preview(); RefreshDirty(); status.Text = $"已预览“{page}”默认值；保存后生效。";
     }

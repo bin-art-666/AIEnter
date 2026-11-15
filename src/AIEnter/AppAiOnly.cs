@@ -22,21 +22,22 @@ public partial class App
         aiOpenEvent = new(false, EventResetMode.AutoReset, prefix + ".Open");
         aiQuitEvent = new(false, EventResetMode.AutoReset, prefix + ".Quit");
         settingsEvent = new(false, EventResetMode.AutoReset, prefix + ".Settings");
-        InitializeToggleEntry(prefix);
+        InitializeToggleEntry(prefix); InitializeScreenshotEntry(prefix);
         if (!first || arguments.Contains("--quit"))
         {
             if (!first)
             {
-                if (arguments.Contains("--toggle-ai")) SignalToggle(arguments);
+                if (arguments.Contains("--screenshot")) screenshotEvent!.Set();
+                else if (arguments.Contains("--toggle-ai")) SignalToggle(arguments);
                 else if (arguments.Contains("--taskbar-drop") || arguments.Contains("--drag-hover"))
                     SignalDropEntry(prefix, arguments.Contains("--taskbar-drop"));
                 else (arguments.Contains("--quit") ? aiQuitEvent : arguments.Contains("--settings") ? settingsEvent : aiOpenEvent).Set();
             }
-            DisposeToggleEntry(); aiOpenEvent.Dispose(); aiQuitEvent.Dispose(); settingsEvent.Dispose(); instance.Dispose();
+            DisposeScreenshotEntry(); DisposeToggleEntry(); aiOpenEvent.Dispose(); aiQuitEvent.Dispose(); settingsEvent.Dispose(); instance.Dispose();
             Exit(); return;
         }
         PanelTheme.Apply(UiStyle.Data);
-        if (!arguments.Any(a => a.StartsWith("--verify-") || a is "--taskbar-drop" or "--drag-hover" or "--toggle-ai") && !Ai.Options.ReadOnly)
+        if (!arguments.Any(a => a.StartsWith("--verify-") || a is "--taskbar-drop" or "--drag-hover" or "--toggle-ai" or "--screenshot") && !Ai.Options.ReadOnly)
         {
             var saved = Ai.Options.Data;
             string preferred = saved.DefaultProvider ?? UiDefaults.Provider;
@@ -55,9 +56,10 @@ public partial class App
             (_, _) => dispatcher.TryEnqueue(QuitStandaloneAi), null, Timeout.Infinite, true);
         settingsWait = ThreadPool.RegisterWaitForSingleObject(settingsEvent,
             (state, timedOut) => dispatcher.TryEnqueue(OpenSettings), null, Timeout.Infinite, false);
-        InitializeDropEntry(prefix, dispatcher);
+        InitializeDropEntry(prefix, dispatcher); RegisterScreenshotEntry(dispatcher);
         toggleWait = ThreadPool.RegisterWaitForSingleObject(toggleEvent!, (_, _) => dispatcher.TryEnqueue(() => _ = ToggleAiWindow()), null, Timeout.Infinite, false);
-        if (arguments.Contains("--taskbar-drop") || Directory.Exists(Path.Combine(DataDirectory, "incoming-drops")) && Directory.EnumerateFiles(Path.Combine(DataDirectory, "incoming-drops"), "*.json").Any()) _ = DrainTaskbarDrops();
+        if (arguments.Contains("--screenshot")) _ = TakeScreenshot();
+        else if (arguments.Contains("--taskbar-drop") || Directory.Exists(Path.Combine(DataDirectory, "incoming-drops")) && Directory.EnumerateFiles(Path.Combine(DataDirectory, "incoming-drops"), "*.json").Any()) _ = DrainTaskbarDrops();
         else if (arguments.Contains("--drag-hover")) _ = OpenDropEntry(false);
         else if (arguments.Contains("--verify-toggle")) _ = VerifyToggleEntry();
         else if (arguments.Contains("--verify-hotkey")) _ = VerifyGlobalHotkey();
@@ -118,7 +120,7 @@ public partial class App
         if (aiQuitting) return;
         aiQuitting = true;
         aiOpenWait?.Unregister(null); aiQuitWait?.Unregister(null); settingsWait?.Unregister(null);
-        DisposeToggleEntry(); globalHotkey?.Dispose(); globalHotkey = null; DisposeDropEntry(); settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
+        DisposeScreenshotEntry(); DisposeToggleEntry(); globalHotkey?.Dispose(); globalHotkey = null; DisposeDropEntry(); settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
         aiOpenEvent?.Dispose(); aiQuitEvent?.Dispose(); settingsEvent?.Dispose(); instance?.Dispose();
         Exit();
     }

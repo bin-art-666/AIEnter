@@ -15,7 +15,13 @@ internal sealed partial class AiWindow
     bool pendingFilesDelivered;
     string[] unconfirmedAttachments = [];
     bool receiptAlreadyVisible;
+    string[] submittedFiles = [], beforeAttachmentImages = [];
+    double[] attachmentRatios = [];
+    Microsoft.UI.Dispatching.DispatcherQueueTimer? receiptTimer;
+    bool checkingReceipt;
+    int receiptAttempts;
     bool transferringDrop;
+    internal bool HasPendingDrop => pendingDrop != null;
     void InitializeDropInbox(Grid host)
     {
         var layout = new Grid(); layout.RowDefinitions.Add(new() { Height = GridLength.Auto }); layout.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
@@ -26,7 +32,9 @@ internal sealed partial class AiWindow
         layout.Children.Add(dropInboxCard); Grid.SetRow(host, 1); layout.Children.Add(host);
         // Called before the host enters the visual tree.
         dropContent = layout;
-        Closed += (_, _) => ClearDropInbox();
+        receiptTimer = DispatcherQueue.CreateTimer(); receiptTimer.Interval = TimeSpan.FromSeconds(1);
+        receiptTimer.Tick += async (_, _) => await ObservePendingReceipt();
+        Closed += (_, _) => { receiptTimer.Stop(); ClearDropInbox(); };
     }
     Grid? dropContent;
     internal async Task<bool> ReceiveDrop(DataPackageView view)
@@ -54,6 +62,13 @@ internal sealed partial class AiWindow
             if (transferringDrop) return false;
             if (!IsOpen) ShowPanel();
             bool append = false;
+            if (pendingDrop != null && pendingProvider == provider && pendingEndpointKey == AiPolicy.Resolve(options.Data).Key
+                && payload.Text.Length == 0 && payload.Files.Length > 0
+                && payload.Files.All(file => pendingDrop.Files.Concat(submittedFiles).Contains(file, StringComparer.OrdinalIgnoreCase)))
+            {
+                if (!transferringDrop) await TransferDrop();
+                return true;
+            }
             if (pendingDrop != null)
             {
                 bool sameTarget = pendingProvider == options.Data.Provider && pendingEndpointKey == AiPolicy.Resolve(options.Data).Key;
@@ -99,16 +114,10 @@ internal sealed partial class AiWindow
         dropInbox.Children.Clear();
         dropInbox.Visibility = Visibility.Visible; if (dropInboxCard != null) dropInboxCard.Visibility = Visibility.Visible;
         if (dropContent != null) dropContent.RowSpacing = 8;
-        dropInbox.Children.Add(new TextBlock { Text = unconfirmedAttachments.Length > 0 ? "附件接收尚未确认" : "尚未放入 AI", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        dropInbox.Children.Add(new TextBlock { Text = unconfirmedAttachments.Length > 0 ? "已交给网页，待核对" : "附件暂存", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         dropInbox.Children.Add(new TextBlock { Text = payload.Text.Length > 300 ? payload.Text[..300] + "…" : payload.Text, MaxHeight = 80, TextWrapping = TextWrapping.Wrap });
         foreach (string file in payload.Files.Concat(unconfirmedAttachments))
             dropInbox.Children.Add(new TextBlock { Text = Path.GetFileName(file), TextTrimming = TextTrimming.CharacterEllipsis });
-        try
-        {
-            if (payload.Files.FirstOrDefault() is { } image && File.Exists(image) && new[] { ".png", ".jpg", ".jpeg", ".bmp", ".webp" }.Contains(Path.GetExtension(image).ToLowerInvariant()) && new FileInfo(image).Length <= 32 * 1024 * 1024)
-                dropInbox.Children.Add(new Image { Source = new BitmapImage(new Uri(image)) { DecodePixelWidth = 260 }, MaxHeight = 100, HorizontalAlignment = HorizontalAlignment.Left });
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         dropInbox.Children.Add(new TextBlock { Text = "目标：" + pendingTargetName, FontSize = 12, Opacity = .7 });
         dropInbox.Children.Add(new TextBlock { Text = unconfirmedAttachments.Length > 0 ? "已交给网页，但尚未确认收到。请检查输入框附件；重新检查不会重复投递。若网页未收到，可取消后用网页附件按钮上传。" : "文件尚未加入网页附件。请确认已登录并回到对话页；AIEnter 不会发送消息。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -124,6 +133,7 @@ internal sealed partial class AiWindow
     }
     void ClearDropInbox()
     {
+        receiptTimer?.Stop(); submittedFiles = []; beforeAttachmentImages = []; attachmentRatios = [];
         pendingDrop?.Dispose(); pendingDrop = null; pendingProvider = null; pendingEndpointKey = pendingTargetName = null;
         unconfirmedAttachments = []; receiptAlreadyVisible = false;
         pendingFilesDelivered = false; if (dropContent != null) dropContent.RowSpacing = 0;
@@ -134,6 +144,56 @@ internal sealed partial class AiWindow
         if (current?.View.CoreWebView2 is not { } core) return;
         try { await core.ExecuteScriptAsync(DropWebScripts.EndDrag).AsTask().WaitAsync(TimeSpan.FromSeconds(2)); }
         catch (Exception ex) when (ex is not OutOfMemoryException) { }
+    }
+    async Task ObservePendingReceipt()
+    {
+        if (checkingReceipt || transferringDrop || pendingDrop is not { } original || unconfirmedAttachments.Length == 0) return;
+        if (++receiptAttempts > 120) { receiptTimer?.Stop(); return; }
+        if (pendingProvider != options.Data.Provider || current == null || current.Endpoint.Key != pendingEndpointKey || current.View.CoreWebView2 is not { } core) return;
+        checkingReceipt = true;
+        try
+        {
+            bool received = await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(unconfirmedAttachments, beforeAttachmentImages, attachmentRatios, !receiptAlreadyVisible)).AsTask().WaitAsync(TimeSpan.FromSeconds(2)) == "true";
+            if (received && ReferenceEquals(pendingDrop, original) && pendingProvider == options.Data.Provider)
+            {
+                unconfirmedAttachments = []; receiptTimer?.Stop();
+                if (string.IsNullOrWhiteSpace(original.Text)) { ClearDropInbox(); SetStatus("网页已显示附件；请核对上传状态，尚未发送消息。"); }
+                else await TransferDrop();
+            }
+        }
+        catch (Exception error) when (error is not OutOfMemoryException) { }
+        finally { checkingReceipt = false; }
+    }
+    static async Task<double[]> ImageRatios(string[] files)
+    {
+        var ratios = new double[files.Length];
+        for (int i = 0; i < files.Length; i++)
+        {
+            if (!new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp" }.Contains(Path.GetExtension(files[i]).ToLowerInvariant())) continue;
+            try
+            {
+                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(files[i]);
+                using var stream = await file.OpenReadAsync();
+                var image = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+                ratios[i] = image.PixelHeight == 0 ? 0 : image.PixelWidth / (double)image.PixelHeight;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+        }
+        return ratios;
+    }
+    async Task SubmitNativePaste(Microsoft.Web.WebView2.Core.CoreWebView2 core, DropPayload payload)
+    {
+        var files = payload.Files.ToArray();
+        var names = files.Select(Path.GetFileName).ToArray();
+        beforeAttachmentImages = JsonSerializer.Deserialize<string[]>(await core.ExecuteScriptAsync(DropWebScripts.AttachmentSnapshot).AsTask().WaitAsync(TimeSpan.FromSeconds(3))) ?? [];
+        attachmentRatios = await ImageRatios(files).WaitAsync(TimeSpan.FromSeconds(5));
+        receiptAlreadyVisible = await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(names!)).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) == "true";
+        current?.View.Focus(FocusState.Programmatic);
+        await WebAttachmentPaste.Deliver(core, files, () =>
+        {
+            submittedFiles = files; payload.Commit(); payload.Files = []; pendingFilesDelivered = true;
+            unconfirmedAttachments = names!; receiptAttempts = 0; receiptTimer?.Start();
+        });
     }
     async Task TransferDrop()
     {
@@ -151,13 +211,15 @@ internal sealed partial class AiWindow
                 if (payload.Files.Any(p => !File.Exists(p))) throw new IOException("附件原位置已失效，请重新拖入。");
                 await EndWebDrag();
                 SetStatus("正在加入网页附件…");
-                // Some sites mount file inputs only after the explicit attachment control opens.
-                if (pendingProvider == "doubao")
+                if (pendingProvider is "chatgpt" or "doubao")
                 {
-                    await core.ExecuteScriptAsync(DropWebScripts.PrepareAttachment);
-                    await Task.Delay(200);
+                    SetStatus("正在通过网页粘贴加入附件…");
+                    await SubmitNativePaste(core, payload);
                 }
-                string raw = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = DropWebScripts.FileInput(payload.Files), returnByValue = false }));
+                else
+                {
+                // Some sites mount file inputs only after the explicit attachment control opens.
+                string raw = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = DropWebScripts.FileInput(payload.Files), returnByValue = false })).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
                 using var doc = JsonDocument.Parse(raw); var node = doc.RootElement.GetProperty("result");
                 if (!node.TryGetProperty("objectId", out var objectId) || node.TryGetProperty("subtype", out var subtype) && subtype.GetString() == "null")
                     throw new IOException("网页附件入口未就绪或存在多个入口。请打开网页的附件区域；如仍无法确定，请用网页附件按钮手动选择，暂存内容仍保留。");
@@ -165,31 +227,48 @@ internal sealed partial class AiWindow
                 try
                 {
                     var names = payload.Files.Select(p => Path.GetFileName(p)).ToArray();
-                    if (pendingProvider == "doubao") receiptAlreadyVisible = await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(names)) == "true";
-                    await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", JsonSerializer.Serialize(new { files = payload.Files, objectId = objectId.GetString() }));
-                    payload.Commit(); payload.Files = []; pendingFilesDelivered = true;
-                    if (pendingProvider == "doubao") unconfirmedAttachments = names;
+                    bool checkReceipt = pendingProvider is "doubao" or "chatgpt";
+                    beforeAttachmentImages = JsonSerializer.Deserialize<string[]>(await core.ExecuteScriptAsync(DropWebScripts.AttachmentSnapshot).AsTask().WaitAsync(TimeSpan.FromSeconds(3))) ?? [];
+                    attachmentRatios = await ImageRatios(payload.Files).WaitAsync(TimeSpan.FromSeconds(5));
+                    if (checkReceipt) receiptAlreadyVisible = await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(names)).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) == "true";
+                    var files = payload.Files.ToArray();
+                    try { await core.CallDevToolsProtocolMethodAsync("DOM.setFileInputFiles", JsonSerializer.Serialize(new { files, objectId = objectId.GetString() })).AsTask().WaitAsync(TimeSpan.FromSeconds(8)); }
+                    catch (TimeoutException)
+                    {
+                        // The site may still complete the side effect. Record uncertain delivery
+                        // before returning so a retry cannot attach the same files twice.
+                        submittedFiles = files; payload.Commit(); payload.Files = []; pendingFilesDelivered = true; unconfirmedAttachments = names;
+                        receiptAttempts = 0; receiptTimer?.Start();
+                        throw new IOException("网页未及时返回接收结果；请核对附件，重新检查不会重复上传。");
+                    }
+                    submittedFiles = files; payload.Commit(); payload.Files = []; pendingFilesDelivered = true;
+                    if (checkReceipt) unconfirmedAttachments = names;
                 }
-                finally { try { await core.CallDevToolsProtocolMethodAsync("Runtime.releaseObject", JsonSerializer.Serialize(new { objectId = objectId.GetString() })); } catch { } }
+                finally { try { await core.CallDevToolsProtocolMethodAsync("Runtime.releaseObject", JsonSerializer.Serialize(new { objectId = objectId.GetString() })).AsTask().WaitAsync(TimeSpan.FromSeconds(2)); } catch { } }
+                }
             }
             if (unconfirmedAttachments.Length > 0)
             {
                 SetStatus("已交给网页，正在核对附件显示…");
                 bool confirmed = false;
-                for (int attempt = 0; attempt < 16 && !receiptAlreadyVisible; attempt++)
+                for (int attempt = 0; attempt < 8; attempt++)
                 {
-                    if (await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(unconfirmedAttachments)).AsTask().WaitAsync(TimeSpan.FromSeconds(2)) == "true") { confirmed = true; break; }
+                    if (await core.ExecuteScriptAsync(DropWebScripts.AttachmentReceipt(unconfirmedAttachments, beforeAttachmentImages, attachmentRatios, !receiptAlreadyVisible)).AsTask().WaitAsync(TimeSpan.FromSeconds(2)) == "true") { confirmed = true; break; }
                     await Task.Delay(500);
                 }
-                if (!confirmed) throw new IOException("网页尚未确认接收附件，请检查输入框附件区；不会自动重复上传。");
+                if (!confirmed)
+                {
+                    receiptAttempts = 0; receiptTimer?.Start(); RenderDropInbox();
+                    SetStatus("附件已交给网页，正在等待显示回执；不代表投递失败，请核对网页附件。"); return;
+                }
                 unconfirmedAttachments = [];
             }
             if (!string.IsNullOrWhiteSpace(payload.Text))
             {
                 const string focus = DropWebScripts.FocusEditor;
-                using var result = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = focus, returnByValue = true })));
+                using var result = JsonDocument.Parse(await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = focus, returnByValue = true })).AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
                 if (!result.RootElement.GetProperty("result").TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.String) throw new IOException("网页输入框未就绪；请打开对话输入框后重试，文字仍保留。");
-                await core.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = (value.GetString() == "newline" && !payload.Text.StartsWith("\n") ? "\n" : "") + payload.Text })); payload.Text = "";
+                await core.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = (value.GetString() == "newline" && !payload.Text.StartsWith("\n") ? "\n" : "") + payload.Text })).AsTask().WaitAsync(TimeSpan.FromSeconds(5)); payload.Text = "";
             }
             bool hadFiles = pendingFilesDelivered;
             bool doubaoReceipt = pendingProvider == "doubao" && hadFiles;

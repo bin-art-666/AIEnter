@@ -23,6 +23,7 @@ internal static class AiControls
             "\uE740" => "M 3 11 L 3 17 L 9 17 M 3 17 L 17 3 M 11 3 L 17 3 L 17 9",
             "\uE73F" => "M 2 9 L 8 9 L 8 3 M 2 15 L 8 9 M 12 17 L 12 11 L 18 11 M 12 11 L 18 5",
             "\uE718" or "\uE77A" => "M 12 2 L 18 8 L 14 10 L 12 14 L 9 11 L 4 16 M 9 11 L 6 8 L 10 6 L 12 2",
+            "\uE8C8" => "M 7 7 L 17 7 L 17 17 L 7 17 Z M 4 13 L 3 13 L 3 3 L 13 3 L 13 4",
             "\uE8BB" => "M 3 3 L 17 17 M 17 3 L 3 17",
             "\uE712" => "M 4 10 L 4.1 10 M 10 10 L 10.1 10 M 16 10 L 16.1 10",
             _ => null

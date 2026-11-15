@@ -2,7 +2,7 @@
 // @id              aienter-taskbar-ai
 // @name            AIEnter AI beside clock
 // @description     Adds an AI button in the real taskbar layout immediately after the clock.
-// @version         2.0.0
+// @version         3.0.0
 // @author          AIEnter
 // @include         explorer.exe
 // @architecture    x86-64
@@ -611,18 +611,18 @@ namespace taskbar = folder_menus_taskbar_xaml;
 
 static HANDLE g_stop = nullptr, g_refresh = nullptr, g_appearanceEvent = nullptr, g_mapping = nullptr;
 static volatile LONG* g_shared = nullptr;
-struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 26, enabled = 1, range = 9, intensity = 77, open = 0, sequence = 0, flowSpeed = 200; };
+struct AppearanceState { LONG magic = 0x41494531, pid = 0, icon = 26, enabled = 1, range = 9, intensity = 77, open = 0, sequence = 0, flowSpeed = 200, screenshot = 1; };
 static AppearanceState g_appearance;
 static AppearanceState ReadAppearance() {
     AppearanceState state;
     for (int attempt = 0; attempt < 32 && g_shared; ++attempt) {
         LONG before = g_shared[7]; if (before & 1) { Sleep(1); continue; }
         MemoryBarrier();
-        LONG values[9]; for (int i = 0; i < 9; ++i) values[i] = g_shared[i];
+        LONG values[10]; for (int i = 0; i < 10; ++i) values[i] = g_shared[i];
         MemoryBarrier();
         if (before != g_shared[7]) { Sleep(1); continue; }
         if (values[0] != 0x41494531) break;
-        state = {values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]};
+        state = {values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9] == 2 ? 0 : 1};
         break;
     }
     state.flowSpeed = std::clamp(state.flowSpeed, 0L, 1800L);
@@ -648,9 +648,12 @@ struct AttachedButton {
     slot::Lease lease;
     winrt::event_token click{}, rightTap{}, layout{}, dragEnter{}, dragOver{}, dragLeave{}, drop{}, hoverTick{};
     winrt::Windows::Foundation::IInspectable pointerPress{nullptr};
-    xaml::DispatcherTimer hoverTimer{nullptr}, flowTimer{nullptr};
+    xaml::DispatcherTimer hoverTimer{nullptr}, flowTimer{nullptr}, clickTimer{nullptr};
     xaml::Media::Imaging::WriteableBitmap flowBitmap{nullptr};
-    winrt::event_token flowTick{};
+    winrt::event_token flowTick{}, clickTick{};
+    bool clickPending = false;
+    DWORD pendingClickTime = 0; POINT pendingClickPoint{};
+    ULONGLONG screenshotAt = 0;
     ULONGLONG flowStarted = 0;
     double flowTime = 0;
     xaml::Media::Brush normalBorder{nullptr};
@@ -693,6 +696,8 @@ static void UpdateButtonAppearance() {
     }
     bool active = g_appearance.open && g_appearance.enabled && range > 0 && g_appearance.intensity > 0;
     state.glow.Opacity(active ? g_appearance.intensity / 100.0 : 0.0);
+    Wh_SetIntValue(L"ScreenshotDoubleClickEnabled", g_appearance.screenshot);
+    Wh_SetIntValue(L"DoubleClickMilliseconds", GetDoubleClickTime());
     Wh_SetIntValue(L"ColorFlowSpeed", g_appearance.flowSpeed);
     Wh_SetIntValue(L"GlowActive", active ? 1 : 0);
     Wh_SetIntValue(L"GlowRange", g_appearance.range); Wh_SetIntValue(L"GlowIntensity", g_appearance.intensity);
@@ -936,6 +941,7 @@ static void RemoveButton() {
     // Detach each handler independently so one stale COM reference cannot prevent slot release.
     auto attempt = [](auto&& action) { try { action(); } catch (...) {} };
     if (state->button) {
+        attempt([&] { if (state->clickTimer) { state->clickTimer.Stop(); state->clickTimer.Tick(state->clickTick); } });
         attempt([&] { if (state->flowTimer) { state->flowTimer.Stop(); state->flowTimer.Tick(state->flowTick); } });
         attempt([&] { state->artwork.ImageOpened(state->artworkOpened); });
         attempt([&] { state->artwork.ImageFailed(state->artworkFailed); });
@@ -955,6 +961,17 @@ static void RemoveButton() {
     Wh_SetIntValue(L"ButtonAttached", 0); Wh_SetIntValue(L"TaskbarDropEnabled", 0);
 }
 
+static void SendPendingClick(AttachedButton& state) {
+    if (!state.clickPending) return;
+    state.clickPending = false;
+    std::wstring command = L"--toggle-ai --gesture " + std::to_wstring(state.pendingClickTime) + L"," + std::to_wstring(state.pendingClickPoint.x) + L"," + std::to_wstring(state.pendingClickPoint.y);
+    LaunchAiCommand(command.c_str());
+}
+static bool IsSecondClick(AttachedButton const& state, DWORD time, POINT point) {
+    return state.clickPending && (DWORD)(time - state.pendingClickTime) <= GetDoubleClickTime()
+        && std::abs(point.x - state.pendingClickPoint.x) <= GetSystemMetrics(SM_CXDOUBLECLK) / 2
+        && std::abs(point.y - state.pendingClickPoint.y) <= GetSystemMetrics(SM_CYDOUBLECLK) / 2;
+}
 static void AttachButton(void* parameter) {
     if (g_unloading) return;
     HWND window = static_cast<HWND>(parameter);
@@ -1014,20 +1031,37 @@ static void AttachButton(void* parameter) {
     state->glowOverlay = glowOverlay; state->glowPosition = glowPosition;
     if (!slot::AcquireAt(parent, position, L"AIEnterAiPosition", state->lease)) { delete state; return; }
     try {
+        state->clickTimer = xaml::DispatcherTimer();
+        state->clickTick = state->clickTimer.Tick([](auto&&,auto&&) {
+            if (!g_attached || g_unloading) return;
+            g_attached->clickTimer.Stop(); SendPendingClick(*g_attached);
+        });
         state->pointerPress = winrt::box_value(xaml::Input::PointerEventHandler([state](auto&&, auto&& args) {
             if (!args.GetCurrentPoint(state->button).Properties().IsLeftButtonPressed()) return;
             state->pressTime = static_cast<DWORD>(GetMessageTime());
             DWORD position = GetMessagePos(); state->pressPoint = {static_cast<short>(LOWORD(position)), static_cast<short>(HIWORD(position))};
+            if (g_appearance.screenshot && IsSecondClick(*state,state->pressTime,state->pressPoint)) {
+                state->clickTimer.Stop(); state->clickPending = false;
+                state->screenshotAt = GetTickCount64(); LaunchAiCommand(L"--screenshot");
+            }
         }));
         button.AddHandler(xaml::UIElement::PointerPressedEvent(), state->pointerPress, true);
         state->click = button.Click([state](auto&&, auto&&) {
             auto time = state->pressTime; auto point = state->pressPoint; state->pressTime = 0;
-            ULONGLONG now = GetTickCount64(); if (now - state->lastToggleAt < 300) return; state->lastToggleAt = now;
-            std::wstring command = L"--toggle-ai --gesture " + std::to_wstring(time) + L"," + std::to_wstring(point.x) + L"," + std::to_wstring(point.y);
-            LaunchAiCommand(command.c_str());
+            ULONGLONG now = GetTickCount64();
+            if (state->screenshotAt && now - state->screenshotAt <= GetDoubleClickTime()) return;
+            if (!g_appearance.screenshot) {
+                state->pendingClickTime = time; state->pendingClickPoint = point; state->clickPending = true;
+                SendPendingClick(*state); return;
+            }
+            if (state->clickPending) { state->clickTimer.Stop(); SendPendingClick(*state); }
+            state->pendingClickTime = time; state->pendingClickPoint = point; state->clickPending = true;
+            DWORD elapsed = (DWORD)(GetMessageTime() - time);
+            state->clickTimer.Interval(std::chrono::milliseconds(std::max(1L,(LONG)GetDoubleClickTime()-(LONG)elapsed)));
+            state->clickTimer.Start();
         });
         // A direct right-click action avoids keeping callbacks in an open flyout at unload.
-        state->rightTap = button.RightTapped([](auto&&, auto&& args) { args.Handled(true); LaunchAi(true); });
+        state->rightTap = button.RightTapped([state](auto&&, auto&& args) { state->clickPending = false; state->clickTimer.Stop(); args.Handled(true); LaunchAi(true); });
         if (!slot::PlaceChild(parent, state->lease, button)) throw winrt::hresult_error(E_FAIL);
         parent.Children().Append(glowOverlay);
     } catch (...) {

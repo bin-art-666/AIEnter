@@ -17,7 +17,7 @@ internal sealed class TaskbarAppearanceBridge : IDisposable
         view.Write(0, 0x41494531); view.Write(4, Environment.ProcessId);
         view.Write(8, value.TaskbarIconSize); view.Write(12, value.GlowEnabled ? 1 : 0);
         view.Write(16, value.GlowRange); view.Write(20, value.GlowIntensity); view.Write(24, open ? 1 : 0);
-        view.Write(32, value.FlowSpeed);
+        view.Write(32, value.FlowSpeed); view.Write(36, value.ScreenshotDoubleClick ? 1 : 2);
         Thread.MemoryBarrier();
         view.Write(28, ++sequence); // even: complete snapshot
         changed.Set();

@@ -20,6 +20,9 @@ internal sealed partial class SettingsWindow : PanelWindow
     readonly Slider padding = Slider("窗口内边距", 0, 16);
     readonly Slider taskbarSize = Slider("任务栏图标大小", 16, 36);
     readonly Slider flowSpeed = Slider("色彩流动速度（%）", 0, 1800);
+    readonly ToggleSwitch screenshotDoubleClick = new() { Header = "双击任务栏图标截图", OnContent = "开启（单击遵循系统双击等待时间）", OffContent = "关闭（单击直接打开／收起）" };
+    readonly Slider screenshotSeconds = Slider("截图驻留时间（秒，0 不自动关闭）", 0, 120);
+    readonly TextBox screenshotFolder = new() { Header = "截图保存目录", PlaceholderText = "留空：图片\\AIEnter\\Screenshots" };
     readonly ToggleSwitch glow = new() { Header = "对话打开时显示光晕", OnContent = "开启", OffContent = "关闭" };
     readonly Slider glowRange = Slider("光晕范围", 0, 12);
     readonly Slider glowIntensity = Slider("光晕强度（%）", 0, 100);
@@ -51,6 +54,21 @@ internal sealed partial class SettingsWindow : PanelWindow
         fields.Children.Add(Section("任务栏图标"));
         fields.Children.Add(taskbarSize); fields.Children.Add(flowSpeed); fields.Children.Add(PanelTheme.Hint("0 暂停，100 为初始流速，200 为当前流速，1800 最快；调整立即预览。")); fields.Children.Add(glow); fields.Children.Add(glowRange); fields.Children.Add(glowIntensity);
         fields.Children.Add(PanelTheme.Hint("图标紧贴圆形按钮，光晕独立绘制，不额外撑宽占位，并受任务栏可用高度限制。只有对话展开时显示光晕，设置窗口不会点亮。"));
+        fields.Children.Add(Section("截图")); fields.Children.Add(screenshotDoubleClick); fields.Children.Add(screenshotSeconds); fields.Children.Add(screenshotFolder);
+        var chooseScreenshotFolder = new Button { Content = "选择保存目录" };
+        chooseScreenshotFolder.Click += async (_, _) =>
+        {
+            using var lease = KeepOpen();
+            try
+            {
+                var picker = new Windows.Storage.Pickers.FolderPicker(); picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+                var folder = await picker.PickSingleFolderAsync(); if (folder != null) screenshotFolder.Text = folder.Path;
+            }
+            catch (Exception error) { status.Text = "无法选择目录：" + error.Message; }
+        };
+        fields.Children.Add(chooseScreenshotFolder);
+        fields.Children.Add(PanelTheme.Hint("框选后立即保存 PNG；关闭或超时不删除图片。悬停时暂停倒计时。点击 AI 后关闭预览，在 AI 窗口处理附件，不发送消息。"));
         fields.Children.Add(Section("AI 与窗口"));
         fields.Children.Add(Section("全局快捷键"));
         hotkey.KeyDown += CaptureHotkey;
@@ -72,16 +90,18 @@ internal sealed partial class SettingsWindow : PanelWindow
         followCorners.Toggled += (_, _) => { RefreshFields(); Preview(); };
         radius.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
 
-        foreach (var slider in new[] { backplateRadius, backplateTransparency, backplateBlur, buttonRadius, buttonSize, padding, taskbarSize, flowSpeed, glowRange, glowIntensity })
+        foreach (var slider in new[] { backplateRadius, backplateTransparency, backplateBlur, buttonRadius, buttonSize, padding, taskbarSize, flowSpeed, screenshotSeconds, glowRange, glowIntensity })
             slider.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
         taskbarSize.ValueChanged += (_, _) => UpdateTaskbarSizeLabel();
+        screenshotDoubleClick.Toggled += (_, _) => { Preview(); RefreshDirty(); };
+        screenshotFolder.TextChanged += (_, _) => RefreshDirty();
         glow.Toggled += (_, _) => { RefreshFields(); Preview(); RefreshDirty(); };
         floatingMode.Toggled += (_, _) => RefreshDirty(); pinned.Toggled += (_, _) => RefreshDirty();
         provider.SelectionChanged += (_, _) => RefreshDirty(); hotkey.TextChanged += (_, _) => RefreshDirty();
         var defaults = new Button { Content = "恢复外观默认值" };
         defaults.Click += (_, _) =>
         {
-            syncing = true; LoadAppearance(new());
+            syncing = true; LoadVisualDefaults();
             followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius;
             resetPanelSize = true; syncing = false; RefreshFields(); Preview(); RefreshDirty();
             status.Text = "已预览默认外观；保存后恢复面板默认尺寸。";
@@ -137,23 +157,33 @@ internal sealed partial class SettingsWindow : PanelWindow
         }
         ShowPanel();
     }
+    void LoadVisualDefaults()
+    {
+        var d = new UiAppearance();
+        LoadAppearance(ReadAppearance() with { ButtonRadius = d.ButtonRadius, ButtonSize = d.ButtonSize,
+            WindowPadding = d.WindowPadding, BackplateRadius = d.BackplateRadius, ButtonColor = d.ButtonColor,
+            SelectedButtonColor = d.SelectedButtonColor, BackplateTransparency = d.BackplateTransparency, BackplateBlur = d.BackplateBlur });
+    }
     void LoadAppearance(UiAppearance value)
     {
         LoadButtonColors(value);
         backplateRadius.Value = value.BackplateRadius; backplateTransparency.Value = value.BackplateTransparency; backplateBlur.Value = value.BackplateBlur;
         buttonRadius.Value = value.ButtonRadius; buttonSize.Value = value.ButtonSize;
         padding.Value = value.WindowPadding; taskbarSize.Value = value.TaskbarIconSize; UpdateTaskbarSizeLabel();
-        flowSpeed.Value = value.FlowSpeed;
+        flowSpeed.Value = value.FlowSpeed; screenshotDoubleClick.IsOn = value.ScreenshotDoubleClick; screenshotSeconds.Value = value.ScreenshotSeconds; screenshotFolder.Text = value.ScreenshotFolder;
         glow.IsOn = value.GlowEnabled; glowRange.Value = value.GlowRange; glowIntensity.Value = value.GlowIntensity;
         UpdateAppearancePreview();
     }
     void UpdateTaskbarSizeLabel() { }
     UiAppearance ReadAppearance() => new((int)buttonRadius.Value, (int)buttonSize.Value, (int)padding.Value,
-        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value, (int)backplateBlur.Value, (int)flowSpeed.Value);
+        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value, (int)backplateBlur.Value, (int)flowSpeed.Value, screenshotDoubleClick.IsOn, (int)screenshotSeconds.Value, screenshotFolder.Text.Trim());
     void Preview()
     {
         if (syncing) return;
-        App.PreviewAppearance(ReadAppearance());
+        var appearance = ReadAppearance();
+        try { appearance.Validate(); }
+        catch (InvalidDataException error) { status.Text = error.Message; RefreshDirty(); return; }
+        App.PreviewAppearance(appearance);
         App.Ai.PreviewCorners(followCorners.IsOn, (int)Math.Round(radius.Value));
         UpdateAppearancePreview();
         status.Text = "正在预览；保存后记住，关闭撤销未保存的外观。";

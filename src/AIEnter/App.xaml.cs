@@ -33,6 +33,7 @@ public partial class App : Application
         DataDirectory = index >= 0 && index + 1 < arguments.Length
             ? Path.GetFullPath(arguments[index + 1])
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIEnter");
+        if (arguments.Contains("--verify-screenshot")) { _ = VerifyScreenshots(); return; }
         if (arguments.Contains("--verify-ai-modes"))
         {
             PanelTheme.Apply(UiStyle.Data);

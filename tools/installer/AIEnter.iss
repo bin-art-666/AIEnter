@@ -1,4 +1,4 @@
-#define AppVersion "2.0.0"
+#define AppVersion "3.0.0"
 #define Root "..\.."
 [Setup]
 AppId={{093C03B0-4538-4DD4-BB72-19FA0F41CEAF}
@@ -51,8 +51,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\Start.vbs"""; Description: "启动 AIEnter 和任务栏图标"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
-Filename: "{app}\TaskbarRuntime\windhawk.exe"; Parameters: "-exit -wait"; Flags: runhidden waituntilterminated skipifdoesntexist
-Filename: "{app}\AIEnter.exe"; Parameters: "--quit"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\TaskbarRuntime\windhawk.exe"; Parameters: "-exit -wait"; RunOnceId: "StopAIEnterTaskbar"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\AIEnter.exe"; Parameters: "--quit"; RunOnceId: "StopAIEnter"; Flags: runhidden waituntilterminated skipifdoesntexist
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\TaskbarRuntime"
@@ -107,4 +107,37 @@ begin
     '[Settings]' + #13#10 + 'executable=' + ExpandConstant('{app}\AIEnter.exe') + #13#10;
   if not SaveStringToFile(RuntimePath + '\AppData\Engine\Mods\aienter-taskbar-ai.ini', Config, False) then
     RaiseException('无法配置任务栏入口，请重新运行安装程序。');
+end;
+
+
+function PsLiteral(Value: String): String;
+begin
+  StringChangeEx(Value, #39, #39 + #39, True);
+  Result := #39 + Value + #39;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var RuntimePath, CleanupDir, CleanupScript, ScriptText: String;
+begin
+  if CurUninstallStep <> usPostUninstall then Exit;
+  RuntimePath := ExpandConstant('{app}\TaskbarRuntime');
+  if not DirExists(RuntimePath) then Exit;
+  CleanupDir := ExpandConstant('{localappdata}\AIEnter-UninstallCleanup');
+  ForceDirectories(CleanupDir);
+  CleanupScript := CleanupDir + '\cleanup.ps1';
+  if not SaveStringToFile(RuntimePath + '\.aienter-uninstall', '093C03B0-4538-4DD4-BB72-19FA0F41CEAF', False) then Exit;
+  ScriptText := '$ErrorActionPreference = '+PsLiteral('Stop')+#13#10+
+    '$target = '+PsLiteral(RuntimePath)+#13#10+
+    'if ([IO.Path]::GetFullPath($target) -ne $target -or [IO.Path]::GetFileName($target) -ne '+PsLiteral('TaskbarRuntime')+') { exit 1 }'+#13#10+
+    'if (Test-Path -LiteralPath $target) {'+#13#10+
+    '  $item = Get-Item -LiteralPath $target -Force'+#13#10+
+    '  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { exit 1 }'+#13#10+
+    '  $marker = Join-Path $target '+PsLiteral('.aienter-uninstall')+#13#10+
+    '  if (!(Test-Path -LiteralPath $marker) -or [IO.File]::ReadAllText($marker) -ne '+PsLiteral('093C03B0-4538-4DD4-BB72-19FA0F41CEAF')+') { exit 1 }'+#13#10+
+    '  Remove-Item -LiteralPath $target -Recurse -Force'+#13#10+
+    '}'+#13#10+
+    '[IO.File]::Delete($PSCommandPath)'+#13#10;
+  if SaveStringToFile(CleanupScript, ScriptText, False) then
+    RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\RunOnce', 'AIEnterUninstallCleanup',
+      '"' + ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe') + '" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + CleanupScript + '"');
 end;

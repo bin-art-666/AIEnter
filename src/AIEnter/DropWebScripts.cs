@@ -16,7 +16,7 @@ internal static class DropWebScripts
           const mime={'.pdf':'application/pdf','.txt':'text/plain','.csv':'text/csv','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.doc':'application/msword','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xls':'application/vnd.ms-excel','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.ppt':'application/vnd.ms-powerpoint','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','.md':'text/markdown','.zip':'application/zip'};
           const distance=e=>{let a=e;for(let d=0;a&&a!==document.body;a=a.parentElement,d++)if(a.contains(editor))return d;return 1000;};
           const candidates=[...document.querySelectorAll('input[type=file]:not([disabled])')].map(e=>{
-            if(e.closest('[inert],[aria-hidden=true]'))return {e,score:-1};
+            if(e.closest('[inert]'))return {e,score:-1};
             if(extensions.length>1&&!e.multiple)return {e,score:-1};
             const accept=e.accept.toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
           const accepts=ext=>accept.length===0||accept.some(a=>a==='*/*'||a===ext||a===mime[ext]||a===mime[ext]?.split('/')[0]+'/*'||a==='image/*'&&images.includes(ext));
@@ -28,17 +28,22 @@ internal static class DropWebScripts
         })()
         """;
     }
-    internal static string AttachmentReceipt(string[] names) => $$"""
+    internal const string AttachmentSnapshot = "[...document.images].map(e=>e.currentSrc||e.src).filter(Boolean)";
+    internal static string AttachmentReceipt(string[] names, string[]? beforeImages = null, double[]? ratios = null, bool allowNamed = true) => $$"""
         (()=>{
-          const names={{JsonSerializer.Serialize(names)}};
+          const names={{JsonSerializer.Serialize(names)}}, before=new Set({{JsonSerializer.Serialize(beforeImages ?? [])}}), ratios={{JsonSerializer.Serialize(ratios ?? [])}};
           const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+          const clean=e=>!importError(e);
+          const importError=e=>/上传失败|上传中|正在上传|不支持|超出|uploading|failed|unsupported/i.test((e.closest('[role=listitem]')??e.parentElement)?.innerText??'');
           const nodes=[...document.querySelectorAll('body *')].filter(e=>visible(e)&&!e.matches('input,textarea,script,style')&&e.children.length===0);
-          return names.every(name=>nodes.some(e=>{
-            const text=[e.textContent,e.getAttribute('title'),e.getAttribute('aria-label')].filter(Boolean).join(' ');
-            if(!text.includes(name))return false;
-            const area=e.closest('[role=listitem]')??e.parentElement;
-            return !/上传失败|上传中|正在上传|不支持|超出|uploading|failed|unsupported/i.test(area?.innerText??'');
-          }));
+          const images=[...document.images].filter(e=>visible(e)&&e.complete&&e.naturalWidth>=16&&e.naturalHeight>=16&&clean(e)&&!before.has(e.currentSrc||e.src));
+          const used=new Set();
+          return names.every((name,index)=>{
+            if({{(allowNamed ? "true" : "false")}}&&nodes.some(e=>[e.textContent,e.getAttribute('title'),e.getAttribute('aria-label')].filter(Boolean).join(' ').includes(name)&&clean(e)))return true;
+            if(!ratios[index])return false;
+            const image=images.find(e=>!used.has(e)&&Math.abs(e.naturalWidth/e.naturalHeight/ratios[index]-1)<.03);
+            if(!image)return false;used.add(image);return true;
+          });
         })()
         """;
     internal const string PrepareAttachment = """
