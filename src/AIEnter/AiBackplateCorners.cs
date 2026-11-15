@@ -28,7 +28,7 @@ internal sealed partial class AiWindow
     }
     void InitializeBackplateCorners()
     {
-        resizeFrame = new AiResizeFrame(WinRT.Interop.WindowNative.GetWindowHandle(this), () => Detached, QueueFrameRefresh);
+        resizeFrame = new AiResizeFrame(WinRT.Interop.WindowNative.GetWindowHandle(this), () => Detached, QueueFrameRefresh, () => root.CornerRadius);
         Closed += (_, _) => resizeFrame.Dispose();
         PanelTheme.Changed += RefreshBackplateCorners;
         AppWindow.Changed += (_, args) =>

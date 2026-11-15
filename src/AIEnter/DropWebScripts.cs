@@ -14,18 +14,61 @@ internal static class DropWebScripts
           if(!editor)return null;
           const extensions={{extensions}}, images=['.png','.jpg','.jpeg','.webp','.gif','.bmp','.avif','.heic','.heif','.tif','.tiff','.svg'];
           const mime={'.pdf':'application/pdf','.txt':'text/plain','.csv':'text/csv','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.doc':'application/msword','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xls':'application/vnd.ms-excel','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.ppt':'application/vnd.ms-powerpoint','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','.md':'text/markdown','.zip':'application/zip'};
+          const distance=e=>{let a=e;for(let d=0;a&&a!==document.body;a=a.parentElement,d++)if(a.contains(editor))return d;return 1000;};
           const candidates=[...document.querySelectorAll('input[type=file]:not([disabled])')].map(e=>{
+            if(e.closest('[inert],[aria-hidden=true]'))return {e,score:-1};
             if(extensions.length>1&&!e.multiple)return {e,score:-1};
             const accept=e.accept.toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
           const accepts=ext=>accept.length===0||accept.some(a=>a==='*/*'||a===ext||a===mime[ext]||a===mime[ext]?.split('/')[0]+'/*'||a==='image/*'&&images.includes(ext));
             if(!extensions.every(accepts))return {e,score:-1};
-            return {e,score:(accept.length?30:10)+(e.multiple?1:0)+(e.closest('form')?.contains(editor)?5:0)-(e.hasAttribute('capture')?30:0)};
+            return {e,score:(accept.length?30:10)+(e.multiple?1:0)+(e.closest('form')?.contains(editor)?5:0)+Math.max(0,20-distance(e)*2)-(e.hasAttribute('capture')?30:0)};
           }).filter(c=>c.score>=0).sort((a,b)=>b.score-a.score);
           if(!candidates.length||candidates.length>1&&candidates[0].score===candidates[1].score)return null;
           return candidates[0].e;
         })()
         """;
     }
+    internal static string AttachmentReceipt(string[] names) => $$"""
+        (()=>{
+          const names={{JsonSerializer.Serialize(names)}};
+          const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+          const nodes=[...document.querySelectorAll('body *')].filter(e=>visible(e)&&!e.matches('input,textarea,script,style')&&e.children.length===0);
+          return names.every(name=>nodes.some(e=>{
+            const text=[e.textContent,e.getAttribute('title'),e.getAttribute('aria-label')].filter(Boolean).join(' ');
+            if(!text.includes(name))return false;
+            const area=e.closest('[role=listitem]')??e.parentElement;
+            return !/上传失败|上传中|正在上传|不支持|超出|uploading|failed|unsupported/i.test(area?.innerText??'');
+          }));
+        })()
+        """;
+    internal const string PrepareAttachment = """
+        (()=>{
+          if(!/(^|\.)doubao\.com$/.test(location.hostname))return false;
+          const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+          const names=e=>[e.getAttribute('aria-label'),e.getAttribute('title'),e.textContent].filter(Boolean).join(' ').trim();
+          const controls=[...document.querySelectorAll('button,[role=button]')].filter(visible);
+          const matches=controls.filter(e=>/^(上传文件|添加附件|上传附件|附件|Upload file|Attach files?)$/i.test(names(e)));
+          if(matches.length!==1)return false;
+          matches[0].click();return true;
+        })()
+        """;
+    // Native routing consumes the real drop, so the page must still receive the
+    // leave/end lifecycle. Do not synthesize a drop or change site DOM/CSS.
+    internal const string EndDrag = """
+        (()=>{
+          const targets=new Set();
+          for(const [x,y] of [[innerWidth/2,innerHeight/2],[1,1],[innerWidth-2,innerHeight-2]]){
+            let e=document.elementFromPoint(x,y);
+            while(e){targets.add(e);e=e.parentElement;}
+          }
+          targets.add(document);targets.add(window);
+          for(const target of targets){
+            for(const type of ['dragleave','dragend'])
+              target.dispatchEvent(new DragEvent(type,{bubbles:false,cancelable:true,clientX:-1,clientY:-1,relatedTarget:null}));
+          }
+          return true;
+        })()
+        """;
     internal const string FocusEditor = """
         (()=>{
           const e=[...document.querySelectorAll('textarea:not([disabled]):not([readonly]),[contenteditable=true][role=textbox],[contenteditable=true]')]

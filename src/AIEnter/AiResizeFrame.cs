@@ -8,13 +8,14 @@ internal sealed class AiResizeFrame : IDisposable
     readonly IntPtr window;
     readonly Func<bool> enabled;
     readonly Action frameChanged;
+    readonly Func<Microsoft.UI.Xaml.CornerRadius> corners;
     readonly Procedure procedure;
     static readonly UIntPtr Id = new(0x41495246);
     bool disposed;
     delegate IntPtr Procedure(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
-    internal AiResizeFrame(IntPtr window, Func<bool> enabled, Action frameChanged)
+    internal AiResizeFrame(IntPtr window, Func<bool> enabled, Action frameChanged, Func<Microsoft.UI.Xaml.CornerRadius> corners)
     {
-        this.window = window; this.enabled = enabled; this.frameChanged = frameChanged; procedure = Handle;
+        this.window = window; this.corners = corners; this.enabled = enabled; this.frameChanged = frameChanged; procedure = Handle;
         if (!SetWindowSubclass(window, procedure, Id, UIntPtr.Zero)) throw new InvalidOperationException("无法初始化 AI 窗口边框。");
         SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, 0x0037);
     }
@@ -36,6 +37,20 @@ internal sealed class AiResizeFrame : IDisposable
                 int grip = Math.Max(4, (int)Math.Round(5 * Native.GetDpiForWindow(hwnd) / 96d));
                 if (x >= 0 && y >= 0 && x < width && y < height)
                 {
+                    // Rectangular 5px corner intersections are outside a rounded HRGN.
+                    // Hit the visible arc itself, without turning header buttons into grips.
+                    var radii = corners();
+                    double scale = Native.GetDpiForWindow(hwnd) / 96d;
+                    var cornerHits = new[] { (x, y, radii.TopLeft, 13), (width - 1 - x, y, radii.TopRight, 14),
+                        (x, height - 1 - y, radii.BottomLeft, 16), (width - 1 - x, height - 1 - y, radii.BottomRight, 17) };
+                    foreach (var (cx, cy, value, cornerHit) in cornerHits)
+                    {
+                        double radius = Math.Min(value * scale, Math.Min(width, height) / 2d);
+                        double reach = Math.Max(grip * 2, radius + grip);
+                        if (cx < reach && cy < reach && (radius <= grip ||
+                            Math.Pow(cx - radius, 2) + Math.Pow(cy - radius, 2) >= Math.Pow(Math.Max(0, radius - grip * 1.5), 2)))
+                            return new(cornerHit);
+                    }
                     bool left = x < grip, right = x >= width - grip, top = y < grip, bottom = y >= height - grip;
                     int hit = top ? (left ? 13 : right ? 14 : 12) : bottom ? (left ? 16 : right ? 17 : 15) : left ? 10 : right ? 11 : 0;
                     if (hit != 0) return new(hit);
@@ -49,10 +64,17 @@ internal sealed class AiResizeFrame : IDisposable
         if ((GetWindowLongPtr(window, -16).ToInt64() & (0x00C00000 | 0x00040000)) != 0)
             throw new Exception("Expanded window restored an OS-painted caption or sizing frame.");
         GetWindowRect(window, out var rect);
+        double scale = Native.GetDpiForWindow(window) / 96d;
+        var radius = corners();
+        int Arc(double r) => Math.Max(2, (int)Math.Ceiling(r * scale * (1 - Math.Sqrt(.5))) + 1);
+        var tl = Arc(radius.TopLeft); var tr = Arc(radius.TopRight);
+        var bl = Arc(radius.BottomLeft); var br = Arc(radius.BottomRight);
         foreach (var point in new[] { (rect.Left + 1, (rect.Top + rect.Bottom) / 2, 10),
             (rect.Right - 2, (rect.Top + rect.Bottom) / 2, 11),
             ((rect.Left + rect.Right) / 2, rect.Top + 1, 12),
-            ((rect.Left + rect.Right) / 2, rect.Bottom - 2, 15) })
+            ((rect.Left + rect.Right) / 2, rect.Bottom - 2, 15),
+            (rect.Left + tl, rect.Top + tl, 13), (rect.Right - 1 - tr, rect.Top + tr, 14),
+            (rect.Left + bl, rect.Bottom - 1 - bl, 16), (rect.Right - 1 - br, rect.Bottom - 1 - br, 17) })
         {
             var packed = new IntPtr(unchecked((int)((uint)(ushort)point.Item1 | ((uint)(ushort)point.Item2 << 16))));
             if (SendMessageTimeout(window, 0x0084, IntPtr.Zero, packed, 2, 1000, out var hit) == IntPtr.Zero || hit.ToInt32() != point.Item3)

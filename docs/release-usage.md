@@ -1,8 +1,8 @@
-# AIEnter v1.5.0 使用说明
+# AIEnter v1.5.1 使用说明
 
 ## 运行程序
 
-1. 下载 AIEnter-v1.5.0-win-x64.zip，完整解压到固定目录。
+1. 下载 AIEnter-v1.5.1-win-x64.zip，完整解压到固定目录。
 2. 在 Windows 11 x64 上运行 AIEnter.exe；需安装 Microsoft WebView2 Runtime。
 3. 初次打开 AI 网站时自行登录。程序包已包含 .NET 与 Windows App SDK 运行依赖，无需安装开发 SDK。
 

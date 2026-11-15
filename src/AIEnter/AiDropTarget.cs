@@ -51,6 +51,6 @@ internal sealed partial class AiWindow
         var deferral = args.GetDeferral(); dropHint.Visibility = Visibility.Collapsed;
         try { if (!await ReceiveDrop(args.DataView)) SetStatus("当前正在处理其他内容，请稍后重新拖入。"); }
         catch (Exception failure) when (failure is not OutOfMemoryException) { SetStatus("拖入未完成：" + failure.Message); }
-        finally { deferral.Complete(); }
+        finally { deferral.Complete(); await EndWebDrag(); }
     }
 }
