@@ -104,6 +104,14 @@ internal sealed partial class SettingsWindow
 
     FrameworkElement SliderRow(Slider slider)
     {
+        // Keep WinUI's native slider template (including keyboard, focus and high-contrast states),
+        // while giving the track and thumb the softer proportions used by the settings references.
+        slider.Height = 42;
+        slider.CornerRadius = new CornerRadius(999);
+        slider.Resources["SliderTrackThemeHeight"] = 7d;
+        slider.Resources["SliderHorizontalThumbWidth"] = 26d;
+        slider.Resources["SliderHorizontalThumbHeight"] = 26d;
+
         string label = slider.Header?.ToString() ?? ""; slider.Header = null;
         var row = new Grid { ColumnSpacing = 10, RowSpacing = 3 };
         row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
