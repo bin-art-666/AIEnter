@@ -11,6 +11,8 @@ public partial class App
     Window? aiLifetimeWindow;
     SettingsWindow? settingsWindow;
     bool aiOpening, aiQuitting;
+    GlobalHotkey? globalHotkey;
+    string? hotkeyWarning;
 
     void LaunchAiOnly(string[] arguments)
     {
@@ -44,7 +46,9 @@ public partial class App
         var dispatcher = DispatcherQueue.GetForCurrentThread();
         // A hidden window keeps the WinUI lifetime independent of the toolbar.
         aiLifetimeWindow = new Window { Title = "AIEnter 后台" };
-        _ = WinRT.Interop.WindowNative.GetWindowHandle(aiLifetimeWindow);
+        nint lifetimeHandle = WinRT.Interop.WindowNative.GetWindowHandle(aiLifetimeWindow);
+        try { globalHotkey = GlobalHotkey.Replace(lifetimeHandle, Ai.Options.Data.Hotkey, () => dispatcher.TryEnqueue(() => _ = ToggleAiWindow(false))); }
+        catch (Exception error) { hotkeyWarning = error.Message; }
         aiOpenWait = ThreadPool.RegisterWaitForSingleObject(aiOpenEvent,
             (_, _) => dispatcher.TryEnqueue(() => _ = OpenAiWindow()), null, Timeout.Infinite, false);
         aiQuitWait = ThreadPool.RegisterWaitForSingleObject(aiQuitEvent,
@@ -56,6 +60,8 @@ public partial class App
         if (arguments.Contains("--taskbar-drop") || Directory.Exists(Path.Combine(DataDirectory, "incoming-drops")) && Directory.EnumerateFiles(Path.Combine(DataDirectory, "incoming-drops"), "*.json").Any()) _ = DrainTaskbarDrops();
         else if (arguments.Contains("--drag-hover")) _ = OpenDropEntry(false);
         else if (arguments.Contains("--verify-toggle")) _ = VerifyToggleEntry();
+        else if (arguments.Contains("--verify-hotkey")) _ = VerifyGlobalHotkey();
+        else if (arguments.Contains("--verify-ai-sites")) _ = VerifyAiSiteCapabilities();
         else if (arguments.Any(a => a is "--verify-taskbar" or "--verify-taskbar-crash"))
             _ = VerifyTaskbarAppearance(arguments.Contains("--verify-taskbar-crash"));
         else if (arguments.Contains("--toggle-ai")) { SignalToggle(arguments); }
@@ -66,8 +72,28 @@ public partial class App
     void OpenSettings()
     {
         if (aiQuitting) return;
-        settingsWindow ??= new SettingsWindow(Ai.Options, QuitStandaloneAi);
+        settingsWindow ??= new SettingsWindow(Ai.Options, QuitStandaloneAi, SaveOptions, hotkeyWarning);
         settingsWindow.Open();
+    }
+
+    void SaveOptions(AiOptions value)
+    {
+        if (!HotkeyPolicy.TryNormalize(value.Hotkey, out string normalized)) throw new InvalidDataException("快捷键格式无效。");
+        value = value with { Hotkey = normalized };
+        HotkeyPolicy.TryNormalize(Ai.Options.Data.Hotkey, out string previous);
+        GlobalHotkey? candidate = null;
+        if (!string.Equals(previous, value.Hotkey, StringComparison.OrdinalIgnoreCase)
+            || globalHotkey is null && !string.IsNullOrWhiteSpace(value.Hotkey))
+            candidate = GlobalHotkey.Prepare(WinRT.Interop.WindowNative.GetWindowHandle(aiLifetimeWindow!), value.Hotkey,
+                () => DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => _ = ToggleAiWindow(false)));
+        try
+        {
+            Ai.Options.Save(value);
+            if (candidate is not null) { candidate.Commit(); globalHotkey = candidate; }
+            else if (string.IsNullOrWhiteSpace(value.Hotkey)) { globalHotkey?.Dispose(); globalHotkey = null; }
+            hotkeyWarning = null;
+        }
+        catch { candidate?.Dispose(); throw; }
     }
 
     async Task OpenAiWindow()
@@ -92,7 +118,7 @@ public partial class App
         if (aiQuitting) return;
         aiQuitting = true;
         aiOpenWait?.Unregister(null); aiQuitWait?.Unregister(null); settingsWait?.Unregister(null);
-        DisposeToggleEntry(); DisposeDropEntry(); settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
+        DisposeToggleEntry(); globalHotkey?.Dispose(); globalHotkey = null; DisposeDropEntry(); settingsWindow?.Destroy(); StopAppearanceBridge(); StopAi(); aiLifetimeWindow?.Close();
         aiOpenEvent?.Dispose(); aiQuitEvent?.Dispose(); settingsEvent?.Dispose(); instance?.Dispose();
         Exit();
     }

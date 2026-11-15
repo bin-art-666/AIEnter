@@ -12,6 +12,13 @@ try
     Check(store.Data.AddedProviders!.Select(p => p.Name).SequenceEqual(new[] { "Gemini", "Grok", "Kimi" })
         && AiPolicy.AvailableProviders(store.Data).Count() == 7 && store.Data.DefaultProvider == "deepseek", "Fresh profiles include all seven captured AI entries");
     Check(AiPolicy.OrderedProviders(store.Data).SequenceEqual(UiDefaults.ProviderOrder), "Fresh profiles use the captured seven-provider order");
+    Check(HotkeyPolicy.TryNormalize("alt + control + space", out var normalizedHotkey) && normalizedHotkey == "Ctrl+Alt+SPACE", "Hotkey aliases normalize and include safe modifiers");
+    Check(HotkeyPolicy.TryNormalize("", out _) && HotkeyPolicy.TryNormalize("Ctrl+Shift+F24", out _), "Hotkey can be disabled and supports function keys");
+    foreach (string invalid in new[] { "A", "Shift+A", "Ctrl+Ctrl+A", "Ctrl+NoSuchKey", "Ctrl+Alt+" })
+        Check(!HotkeyPolicy.TryNormalize(invalid, out _), "Unsafe or malformed shortcut rejected: " + invalid);
+    Reject(() => store.Save(store.Data with { Hotkey = "Shift+A" }));
+    store.Save(store.Data with { Hotkey = "Ctrl+Alt+SPACE" });
+    Check(new AiOptionsStore(path).Data.Hotkey == "Ctrl+Alt+SPACE", "Global shortcut preference persists");
     var independentDefaults = new AiOptionsStore(Path.Combine(root, "independent.json"));
     Check(!ReferenceEquals(independentDefaults.Data.AddedProviders, store.Data.AddedProviders)
         && !ReferenceEquals(independentDefaults.Data.ProviderOrder, store.Data.ProviderOrder), "Profiles do not share mutable default arrays");

@@ -34,19 +34,23 @@ internal sealed partial class AiWindow
             var text = new DataPackage(); text.SetText("dropped text");
             Check(await ReceiveDrop(text.GetView()), "Text drop was rejected.");
             Check(await Text() == "existing draft\ndropped text", "Dropped text overwrote or failed to append the draft.");
+            Check(Status.Contains("文字或链接已放入") && Status.Contains("尚未发送"), "Text receive did not report draft-only status.");
             ToggleDetached(); Check(Detached, "Drop protection prevented mode switching."); await Task.Delay(150);
             var link = new DataPackage(); link.SetWebLink(new Uri("https://example.invalid/link"));
             Check(await ReceiveDrop(link.GetView()) && (await Text())!.EndsWith("https://example.invalid/link"), "Expanded mode failed to receive links: " + await Text() + " | " + Status);
+            Check(Status.Contains("文字或链接已放入"), "Link receive did not report successful placement.");
             var size = AppWindow.Size; AppWindow.Resize(new(size.Width - 40, size.Height - 20)); await Task.Delay(150);
             var files = new DataPackage(); files.SetStorageItems([await StorageFile.GetFileFromPathAsync(first), await StorageFile.GetFileFromPathAsync(second)]);
             Check(await ReceiveDrop(files.GetView()), "Files were rejected after resize.");
             Check(await current!.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('attachments').files.length") == "2", "Files did not reach the page input.");
+            Check(Status.Contains("文件已加入网页附件") && Status.Contains("尚未发送"), "File receive did not report attachment-only status.");
             AppWindow.Resize(size); ToggleDetached(); Check(!Detached, "Drop protection prevented returning to floating mode."); await Task.Delay(150);
             string image = Path.Combine(area, "image.png");
             await File.WriteAllBytesAsync(image, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII="));
             var bitmap = new DataPackage(); bitmap.SetBitmap(RandomAccessStreamReference.CreateFromFile(await StorageFile.GetFileFromPathAsync(image)));
             Check(await ReceiveDrop(bitmap.GetView()), "Bitmap drop was rejected.");
             Check(await current!.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('attachments').files.length") == "1", "Bitmap did not become an attachment.");
+            Check(Status.Contains("文件已加入网页附件"), "Image receive did not report successful attachment placement.");
             string queue = Path.Combine(directory, "incoming-drops"); Directory.CreateDirectory(queue);
             string packetFile = Path.Combine(queue, "local-test.json");
             await File.WriteAllTextAsync(packetFile, JsonSerializer.Serialize(new TaskbarDropPacket(Provider: "chatgpt", Text: "taskbar text", Files: [first])));
@@ -64,6 +68,9 @@ internal sealed partial class AiWindow
             await current!.View.CoreWebView2.ExecuteScriptAsync("const doc=document.createElement('input');doc.type='file';doc.multiple=true;doc.accept='application/vnd.openxmlformats-officedocument.wordprocessingml.document';doc.id='word-files';document.body.append(doc)");
             Check(JsonSerializer.Deserialize<string>(await current!.View.CoreWebView2.ExecuteScriptAsync("(" + DropWebScripts.FileInput(["test.docx"]) + ")?.id")) == "word-files", "Typed attachment input selection failed.");
             await current!.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('word-files').remove()");
+            await current!.View.CoreWebView2.ExecuteScriptAsync("const broad=document.createElement('input');broad.type='file';broad.multiple=true;broad.accept='application/*';broad.id='broad-files';document.body.append(broad)");
+            Check(JsonSerializer.Deserialize<string>(await current!.View.CoreWebView2.ExecuteScriptAsync("(" + DropWebScripts.FileInput(["test.pdf"]) + ")?.id")) == "broad-files", "MIME wildcard attachment input was not recognized.");
+            await current!.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('broad-files').remove()");
             string before = (await Text())!;
             bool rejected = false;
             try { await ReceivePayload(new DropPayload { Text = "wrong target" }, "deepseek"); } catch (IOException) { rejected = true; }

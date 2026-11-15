@@ -149,6 +149,14 @@ internal sealed partial class AiWindow
         ToggleDetached();
         Check(!Detached && !AppWindow.IsShownInSwitchers && options.Data.FloatingPanel, "Return did not restore floating mode.");
         await VerifyFloatingCaption(false); VerifyBackplateCorners();
+        // Exercise settled presenter state, including unchanged-size HRGN loss.
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            ToggleDetached(); await Task.Delay(250); VerifyBackplateCorners(); await CheckDraft();
+            SetWindowRgn(WinRT.Interop.WindowNative.GetWindowHandle(this), IntPtr.Zero, true);
+            QueueFrameRefresh(); await Task.Delay(150); VerifyBackplateCorners();
+            ToggleDetached(); await Task.Delay(250); VerifyBackplateCorners(); await CheckDraft();
+        }
         CheckPlacement();
         await CheckDraft();
         Hide();

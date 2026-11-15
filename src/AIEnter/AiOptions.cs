@@ -12,7 +12,7 @@ internal sealed record AiBounds(int X, int Y, int Width, int Height);
 internal enum AiPanelEdge { Left, Top, Bottom }
 internal sealed record AiOptions(int Version = 2, string Provider = UiDefaults.Provider, string CustomName = "自定义 AI", string CustomUrl = "", bool Pinned = UiDefaults.Pinned,
     Dictionary<string, AiBounds>? Layouts = null, double DockWidth = UiDefaults.DockWidth, double DockHeight = UiDefaults.DockHeight, double DockTopOffset = 0,
-    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null, string? DefaultProvider = null);
+    bool FollowGlobalCorners = UiDefaults.FollowGlobalCorners, int WebCornerRadius = UiDefaults.WebCornerRadius, bool FloatingPanel = UiDefaults.FloatingPanel, UiAppearance? Appearance = null, string[]? ProviderOrder = null, AiProvider[]? AddedProviders = null, string? DefaultProvider = null, string Hotkey = "");
 internal static partial class AiPolicy
 {
     internal static double CornerRadius(AiOptions options,double global,double width,double height)
@@ -77,6 +77,7 @@ internal static partial class AiPolicy
             || !double.IsFinite(value.DockTopOffset) || value.DockTopOffset is < 0 or > 20000
             || value.CustomName is null || string.IsNullOrWhiteSpace(value.CustomName) || value.CustomName.Length > 40 || value.CustomName.Any(char.IsControl)
             || value.CustomUrl is null || value.CustomUrl.Length > 2048 || value.CustomUrl.Any(char.IsControl)
+            || value.Hotkey is null || !HotkeyPolicy.TryNormalize(value.Hotkey, out _)
             || value.Layouts is { Count: > 32 } || value.Layouts?.Any(p => p.Key.Length != 24 || !p.Key.All(Uri.IsHexDigit) || p.Value is null || p.Value.Width is < 100 or > 20000 || p.Value.Height is < 100 or > 20000 || Math.Abs((long)p.Value.X) > 100000 || Math.Abs((long)p.Value.Y) > 100000) == true)
             throw new InvalidDataException("AI 设置无效，请检查名称、网址和窗口位置。");
         if (value.ProviderOrder is { } order && (order.Length > AvailableProviders(value).Count()

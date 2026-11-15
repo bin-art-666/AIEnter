@@ -865,26 +865,27 @@ static xaml::FrameworkElement FindElement(xaml::DependencyObject const& root,
 
 static void RemoveButton() {
     if (!g_attached) return;
-    auto& state = *g_attached;
-    if (state.button) {
-        state.artwork.ImageOpened(state.artworkOpened);
-        state.artwork.ImageFailed(state.artworkFailed);
-        ResetDropVisual();
-        state.button.DragEnter(state.dragEnter); state.button.DragOver(state.dragOver);
-        state.button.DragLeave(state.dragLeave); state.button.Drop(state.drop);
-        if (state.hoverTimer) { state.hoverTimer.Stop(); state.hoverTimer.Tick(state.hoverTick); }
-        state.button.RemoveHandler(xaml::UIElement::PointerPressedEvent(), state.pointerPress);
-        state.button.Click(state.click);
-        state.button.RightTapped(state.rightTap);
-        state.button.LayoutUpdated(state.layout);
-        controls::Primitives::FlyoutBase::SetAttachedFlyout(state.button, nullptr);
-        uint32_t index;
-        if (state.parent.Children().IndexOf(state.glowOverlay, index)) state.parent.Children().RemoveAt(index);
-        if (state.parent.Children().IndexOf(state.button, index)) state.parent.Children().RemoveAt(index);
-    }
-    slot::Release(state.parent, state.lease);
-    delete g_attached;
+    auto* state = g_attached;
     g_attached = nullptr;
+    // Explorer can disconnect its XAML tree during restart or a display/DPI rebuild.
+    // Detach each handler independently so one stale COM reference cannot prevent slot release.
+    auto attempt = [](auto&& action) { try { action(); } catch (...) {} };
+    if (state->button) {
+        attempt([&] { state->artwork.ImageOpened(state->artworkOpened); });
+        attempt([&] { state->artwork.ImageFailed(state->artworkFailed); });
+        attempt([&] { if (state->hoverTimer) { state->hoverTimer.Stop(); state->hoverTimer.Tick(state->hoverTick); } });
+        attempt([&] { state->button.DragEnter(state->dragEnter); }); attempt([&] { state->button.DragOver(state->dragOver); });
+        attempt([&] { state->button.DragLeave(state->dragLeave); }); attempt([&] { state->button.Drop(state->drop); });
+        attempt([&] { state->button.RemoveHandler(xaml::UIElement::PointerPressedEvent(), state->pointerPress); });
+        attempt([&] { state->button.Click(state->click); }); attempt([&] { state->button.RightTapped(state->rightTap); });
+        attempt([&] { state->button.LayoutUpdated(state->layout); });
+        attempt([&] { controls::Primitives::FlyoutBase::SetAttachedFlyout(state->button, nullptr); });
+        uint32_t index;
+        attempt([&] { if (state->parent.Children().IndexOf(state->glowOverlay, index)) state->parent.Children().RemoveAt(index); });
+        attempt([&] { if (state->parent.Children().IndexOf(state->button, index)) state->parent.Children().RemoveAt(index); });
+    }
+    attempt([&] { slot::Release(state->parent, state->lease); });
+    delete state;
     Wh_SetIntValue(L"ButtonAttached", 0); Wh_SetIntValue(L"TaskbarDropEnabled", 0);
 }
 
@@ -1101,9 +1102,11 @@ void Wh_ModAfterInit() {
                 }
             }
             HANDLE events[]{g_stop, g_refresh, g_appearanceEvent, watchedProcess};
-            DWORD signaled = WaitForMultipleObjects(watchedProcess ? 4 : 3, events, FALSE, INFINITE);
+            // Periodically revalidate the XAML target. This also refreshes the real slot after
+            // taskbar auto-hide, monitor/DPI changes, or a transient disconnected taskbar tree.
+            DWORD signaled = WaitForMultipleObjects(watchedProcess ? 4 : 3, events, FALSE, 2500);
             if (signaled == WAIT_OBJECT_0 || signaled == WAIT_FAILED) break;
-            reattach = signaled == WAIT_OBJECT_0 + 1;
+            reattach = signaled == WAIT_TIMEOUT || signaled == WAIT_OBJECT_0 + 1;
             if (signaled == WAIT_OBJECT_0 + 3) {
                 AppearanceState state = ReadAppearance(); state.open = 0; apply(state);
                 if (watchedProcess) CloseHandle(watchedProcess);

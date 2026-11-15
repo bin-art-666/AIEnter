@@ -7,13 +7,14 @@ internal sealed class AiResizeFrame : IDisposable
 {
     readonly IntPtr window;
     readonly Func<bool> enabled;
+    readonly Action frameChanged;
     readonly Procedure procedure;
     static readonly UIntPtr Id = new(0x41495246);
     bool disposed;
     delegate IntPtr Procedure(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
-    internal AiResizeFrame(IntPtr window, Func<bool> enabled)
+    internal AiResizeFrame(IntPtr window, Func<bool> enabled, Action frameChanged)
     {
-        this.window = window; this.enabled = enabled; procedure = Handle;
+        this.window = window; this.enabled = enabled; this.frameChanged = frameChanged; procedure = Handle;
         if (!SetWindowSubclass(window, procedure, Id, UIntPtr.Zero)) throw new InvalidOperationException("无法初始化 AI 窗口边框。");
         SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0, 0x0037);
     }
@@ -21,11 +22,12 @@ internal sealed class AiResizeFrame : IDisposable
     {
         if (!disposed)
         {
+            if (message is 0x007D or 0x02E0 or 0x031E) frameChanged(); // style, DPI, DWM composition changes
             if (message == 0x0083 && wParam != IntPtr.Zero) return IntPtr.Zero; // WM_NCCALCSIZE: client fills window.
             // WinUI may consume a non-client pointer after the custom hit test.
             // Let the OS sizing loop handle resize presses directly.
             if (message == 0x00A1 && enabled() && wParam.ToInt64() is >= 10 and <= 17)
-                return DefWindowProc(hwnd, message, wParam, lParam);
+                return DefWindowProc(hwnd, 0x0112, new IntPtr(0xF000 + wParam.ToInt64() - 9), lParam); // SC_SIZE + WMSZ edge
             if (message == 0x0084 && enabled() && GetWindowRect(hwnd, out var rect))
             {
                 long packed = lParam.ToInt64();
@@ -44,6 +46,8 @@ internal sealed class AiResizeFrame : IDisposable
     }
     internal void VerifyEdges()
     {
+        if ((GetWindowLongPtr(window, -16).ToInt64() & (0x00C00000 | 0x00040000)) != 0)
+            throw new Exception("Expanded window restored an OS-painted caption or sizing frame.");
         GetWindowRect(window, out var rect);
         foreach (var point in new[] { (rect.Left + 1, (rect.Top + rect.Bottom) / 2, 10),
             (rect.Right - 2, (rect.Top + rect.Bottom) / 2, 11),
@@ -65,6 +69,7 @@ internal sealed class AiResizeFrame : IDisposable
     [DllImport("comctl32.dll")] static extern IntPtr DefSubclassProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr DefWindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out Native.Rect rect);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
 }

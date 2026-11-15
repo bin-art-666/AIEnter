@@ -10,6 +10,7 @@ internal sealed class TransparentWindowFrame : IDisposable
     readonly WindowProcedure procedure;
     readonly UIntPtr subclassId = new(0x4C4E);
     bool disposed;
+    bool configuring;
     [StructLayout(LayoutKind.Sequential)] struct Margins { public int Left, Right, Top, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct BlurBehind
     {
@@ -30,6 +31,10 @@ internal sealed class TransparentWindowFrame : IDisposable
     }
     void Configure()
     {
+        if (disposed || configuring) return;
+        configuring = true;
+        try
+        {
         var margins = new Margins(); DwmExtendFrameIntoClientArea(window, ref margins);
         IntPtr region = CreateRectRgn(-2, -2, -1, -1);
         try
@@ -38,7 +43,10 @@ internal sealed class TransparentWindowFrame : IDisposable
             DwmEnableBlurBehindWindow(window, ref blur);
         }
         finally { if (region != IntPtr.Zero) DeleteObject(region); }
+        }
+        finally { configuring = false; }
     }
+    internal void Reapply() => Configure();
     bool Clear(IntPtr dc) => GetClientRect(window, out var rect) && FillRect(dc, ref rect, GetStockObject(4)) != 0;
     IntPtr HandleMessage(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
     {

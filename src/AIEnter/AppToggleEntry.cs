@@ -25,15 +25,15 @@ public partial class App
         toggleView!.Write(0, time); toggleView.Write(4, x); toggleView.Write(8, y);
         Thread.MemoryBarrier(); toggleEvent!.Set();
     }
-    async Task ToggleAiWindow()
+    async Task ToggleAiWindow(bool fromTaskbar = true)
     {
         long now = Environment.TickCount64;
         if (aiQuitting || now - lastToggleAt < 300) return;
         lastToggleAt = now;
         try
         {
-            uint time = toggleView!.ReadUInt32(0);
-            var point = new Native.Point { X = toggleView.ReadInt32(4), Y = toggleView.ReadInt32(8) };
+            uint time = fromTaskbar ? toggleView!.ReadUInt32(0) : 0;
+            var point = fromTaskbar ? new Native.Point { X = toggleView!.ReadInt32(4), Y = toggleView.ReadInt32(8) } : default;
             await Ai.ToggleFromTaskbar(Native.Monitors().First(m => m.Primary), time, point);
         }
         catch (Exception error)

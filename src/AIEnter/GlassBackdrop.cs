@@ -31,6 +31,7 @@ public sealed class GlassBackdrop : SystemBackdrop
     internal bool IsNoBaseActive => material.NoBase && transparentBrush != null;
     internal bool IsReady => material.NoBase ? transparentBrush != null : controller != null || !DesktopAcrylicController.IsSupported();
     internal int ConnectionCount { get; private set; }
+    internal void ReapplyTransparentFrame() => transparentFrame?.Reapply();
     SystemBackdropConfiguration? configuration;
 
     protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot root)

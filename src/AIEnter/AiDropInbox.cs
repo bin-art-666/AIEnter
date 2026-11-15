@@ -101,7 +101,7 @@ internal sealed partial class AiWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         dropInbox.Children.Add(new TextBlock { Text = "目标：" + pendingTargetName, FontSize = 12, Opacity = .7 });
-        dropInbox.Children.Add(new TextBlock { Text = "网页尚未接收，请打开输入框或附件区域后重试。文件加入附件时网站可能开始上传，不自动发送消息。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
+        dropInbox.Children.Add(new TextBlock { Text = "文件尚未加入网页附件。请确认已登录并回到对话页；加入后网站可能开始上传，但 AIEnter 不会发送消息。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .7 });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var confirm = new Button { Content = "重试放入 " + pendingTargetName };
         confirm.Click += async (_, _) => { if (transferringDrop) return; confirm.IsEnabled = false; await TransferDrop(); confirm.IsEnabled = true; }; actions.Children.Add(confirm);
@@ -122,6 +122,7 @@ internal sealed partial class AiWindow
     async Task TransferDrop()
     {
         if (pendingDrop is not { } payload || transferringDrop) return;
+        bool includedText = !string.IsNullOrWhiteSpace(payload.Text);
         transferringDrop = true; using var lease = KeepOpen();
         try
         {
@@ -132,6 +133,7 @@ internal sealed partial class AiWindow
             if (payload.Files.Length > 0)
             {
                 if (payload.Files.Any(p => !File.Exists(p))) throw new IOException("附件原位置已失效，请重新拖入。");
+                SetStatus("正在加入网页附件…");
                 string raw = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = DropWebScripts.FileInput(payload.Files), returnByValue = false }));
                 using var doc = JsonDocument.Parse(raw); var node = doc.RootElement.GetProperty("result");
                 if (!node.TryGetProperty("objectId", out var objectId) || node.TryGetProperty("subtype", out var subtype) && subtype.GetString() == "null")
@@ -151,7 +153,10 @@ internal sealed partial class AiWindow
                 if (!result.RootElement.GetProperty("result").TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.String) throw new IOException("网页输入框未就绪；请打开对话输入框后重试，文字仍保留。");
                 await core.CallDevToolsProtocolMethodAsync("Input.insertText", JsonSerializer.Serialize(new { text = (value.GetString() == "newline" && !payload.Text.StartsWith("\n") ? "\n" : "") + payload.Text })); payload.Text = "";
             }
-            ClearDropInbox(); SetStatus("已交给当前网站，文字放入草稿；请在网页中确认内容后发送。");
+            bool hadFiles = pendingFilesDelivered;
+            ClearDropInbox(); SetStatus(hadFiles
+                ? includedText ? "文件已加入网页附件，文字已放入草稿；尚未发送消息。" : "文件已加入网页附件；尚未发送消息。"
+                : "文字或链接已放入当前 AI 草稿；尚未发送消息。");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { RenderDropInbox(); SetStatus((pendingFilesDelivered ? "附件已交给网站；剩余步骤未完成：" : "未完成：") + ex.Message); }
         finally { transferringDrop = false; }

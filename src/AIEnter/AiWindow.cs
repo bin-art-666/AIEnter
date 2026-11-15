@@ -16,10 +16,11 @@ internal sealed partial class AiWindow : PanelWindow
     readonly Action changed;
     readonly bool verification;
     readonly Grid root = PanelTheme.Layout();
-    readonly SystemBackdropElement backplate = PanelTheme.BackdropSurface();
+    readonly Border backplate = PanelTheme.BackdropSurface();
     readonly Grid browsers = new();
     Border pageFrame = null!;
-    readonly TextBlock status = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.Wrap };
+    readonly TextBlock status = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.NoWrap,
+        TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, VerticalAlignment = VerticalAlignment.Center };
     readonly List<Choice> providerChoices = [];
     readonly Button expand = Icon("\uE740", "展开为独立窗口");
     readonly ToggleButton pin = new();
@@ -35,6 +36,7 @@ internal sealed partial class AiWindow : PanelWindow
     Popup? popup;
     AiBounds? floating;
     internal bool Detached { get; private set; }
+    readonly RunningWindowIcon runningWindowIcon;
     internal bool Initializing => current?.Ready is { IsCompleted: false };
     internal string Status => status.Text;
     internal string DisplayDevice => display.Device;
@@ -59,6 +61,10 @@ internal sealed partial class AiWindow : PanelWindow
         this.verification = verification;
         Title = "AIEnter · AI 助手";
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AIEnter.ico"));
+        runningWindowIcon = new RunningWindowIcon(this);
+        runningWindowIcon.Apply();
+        AppWindow.Changed += (_, _) => { if (!destroyed) runningWindowIcon.Apply(); };
+        Closed += (_, _) => runningWindowIcon.Dispose();
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
         presenter.SetBorderAndTitleBar(false, false);
         presenter.IsResizable = presenter.IsMaximizable = presenter.IsMinimizable = false; presenter.IsAlwaysOnTop = true;
@@ -88,14 +94,31 @@ internal sealed partial class AiWindow : PanelWindow
         PanelTheme.Track(content, static border => border.CornerRadius = PanelTheme.Value<CornerRadius>("CardRadius"));
         InitializeViewportMask();
         Grid.SetRow(content, 1); root.Children.Add(content);
-        var footer = new StackPanel { Spacing = 6 }; footer.Children.Add(status); footer.Children.Add(retry);
+        var statusRow = new Grid { ColumnSpacing = 8 };
+        statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        statusRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var statusProgress = new ProgressRing { Width = 16, Height = 16, IsActive = false, Visibility = Visibility.Collapsed };
+        statusRow.Children.Add(statusProgress); Grid.SetColumn(status, 1); statusRow.Children.Add(status);
+        Grid.SetColumn(retry, 2); statusRow.Children.Add(retry);
+        var footer = PanelTheme.Track(new Border { Child = statusRow }, static border =>
+        {
+            border.Height = PanelTheme.Value<double>("ActionSize");
+            border.CornerRadius = PanelTheme.Value<CornerRadius>("ControlRadius");
+        });
+        PanelTheme.Track(retry, static button =>
+        {
+            button.Height = PanelTheme.Value<double>("ActionSize"); button.MinHeight = 0;
+            button.Padding = new Thickness(8, 0, 8, 0); button.CornerRadius = PanelTheme.Value<CornerRadius>("ControlRadius");
+        });
+        this.statusProgress = statusProgress;
         status.Visibility = Visibility.Collapsed;
         transientStatusTimer = DispatcherQueue.CreateTimer(); transientStatusTimer.Interval = TimeSpan.FromSeconds(6);
         transientStatusTimer.IsRepeating = false;
         transientStatusTimer.Tick += (_, _) => { if (retry.Visibility != Visibility.Visible) footer.Visibility = Visibility.Collapsed; };
         footer.Visibility = Visibility.Collapsed;
         footer.HorizontalAlignment = HorizontalAlignment.Stretch; footer.VerticalAlignment = VerticalAlignment.Bottom;
-        footer.Margin = new Thickness(8); footer.Padding = new Thickness(10);
+        footer.Margin = new Thickness(8); footer.Padding = new Thickness(10, 0, 0, 0);
         footer.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(245, 245, 248, 250));
         footer.RequestedTheme = ElementTheme.Light;
         statusHost = footer;
@@ -109,19 +132,23 @@ internal sealed partial class AiWindow : PanelWindow
         InitializePanel(new Border { Background = new SolidColorBrush(Colors.Transparent), Child = shell,
             CornerRadius = new CornerRadius(App.Appearance.BackplateRadius) });
         InitializeBackplateCorners(); InitializeDropTarget(); ApplyOptions();
+        if (verification && Environment.GetCommandLineArgs().Contains("--compare-no-glass")) backplate.Visibility = Visibility.Collapsed;
     }
     static FontIcon Glyph(string value) => PanelTheme.Glyph(value);
     static void Style(ButtonBase button, string name) => PanelTheme.FramedIconStyle(button, name);
     static Button Icon(string value, string name) => AiControls.IconButton(value,name);
     Microsoft.UI.Dispatching.DispatcherQueueTimer transientStatusTimer = null!;
-    StackPanel statusHost = null!;
+    Border statusHost = null!;
+    ProgressRing statusProgress = null!;
     internal void ReportDropError(string text) => SetStatus(text);
     void SetStatus(string text)
     {
         if (destroyed) return;
         status.Text = text;
+        ToolTipService.SetToolTip(status, text);
         if (statusHost != null)
         {
+            statusProgress.IsActive = false; statusProgress.Visibility = Visibility.Collapsed;
             status.Visibility = Visibility.Visible; statusHost.Visibility = Visibility.Visible;
             transientStatusTimer.Stop(); transientStatusTimer.Start();
         }
@@ -134,8 +161,18 @@ internal sealed partial class AiWindow : PanelWindow
         {
             this.retry.Visibility = retry ? Visibility.Visible : Visibility.Collapsed;
             status.Text = text;
-            if (retry) SetStatus(text);
-            else if (statusHost != null) { transientStatusTimer.Stop(); statusHost.Visibility = Visibility.Collapsed; }
+            ToolTipService.SetToolTip(status, text);
+            if (retry) { SetStatus(text); statusProgress.IsActive = false; statusProgress.Visibility = Visibility.Collapsed; }
+            else if (text.Contains("载入", StringComparison.Ordinal))
+            {
+                transientStatusTimer.Stop(); statusProgress.Visibility = Visibility.Visible; statusProgress.IsActive = true;
+                status.Visibility = Visibility.Visible; statusHost.Visibility = Visibility.Visible;
+            }
+            else if (statusHost != null)
+            {
+                transientStatusTimer.Stop(); statusProgress.IsActive = false; statusProgress.Visibility = Visibility.Collapsed;
+                statusHost.Visibility = Visibility.Collapsed;
+            }
         }
     }
     static void MemoryTarget(WebView2 view, bool low)
@@ -300,8 +337,11 @@ internal sealed partial class AiWindow : PanelWindow
                 host.Visibility = Detached ? Visibility.Collapsed : Visibility.Visible;
             dockGrip.Visibility = Detached ? Visibility.Collapsed : Visibility.Visible;
             var presenter = (OverlappedPresenter)AppWindow.Presenter;
-            presenter.SetBorderAndTitleBar(Detached, false); presenter.IsResizable = Detached;
+            // Both modes share one borderless silhouette. Resize hit testing is
+            // handled by AiResizeFrame rather than an OS-painted thick frame.
+            presenter.SetBorderAndTitleBar(false, false); presenter.IsResizable = false;
             AppWindow.IsShownInSwitchers = Detached;
+            runningWindowIcon.Apply(force: true);
             if (Detached)
             {
                 Native.RestoreResizeFrame(WinRT.Interop.WindowNative.GetWindowHandle(this));
@@ -319,6 +359,7 @@ internal sealed partial class AiWindow : PanelWindow
             ApplyPin();
             if (IsOpen) ShowPanel();
             backplateShape = null; RefreshBackplateCorners();
+            QueueFrameRefresh();
             UpdateFloatingCaption();
         }
         finally { changingMode = false; }

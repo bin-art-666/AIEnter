@@ -91,11 +91,15 @@ internal static partial class PanelTheme
     internal static Style Style(string name) => Value<Style>(name + "Style");
     static MaterialOptions Material() => new(TintOpacity: (float)Value<double>("PanelTintOpacity"), LuminosityOpacity: (float)Value<double>("PanelLuminosityOpacity"));
     internal static GlassBackdrop Backdrop() => new(Material());
-    internal static SystemBackdropElement BackdropSurface() => Track(new SystemBackdropElement
-    { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Top, SystemBackdrop = Backdrop() }, static surface =>
+    internal static Border BackdropSurface() => Track(new Border
+    { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Top }, static surface =>
     {
         surface.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
-        ((GlassBackdrop)surface.SystemBackdrop).Update(Material());
+        // Paint within the XAML visual, so the same clip owns color and alpha.
+        // A separate DesktopAcrylic target can leave a second compositor outline.
+        var color = Material().FlatColor(Application.Current.RequestedTheme == ApplicationTheme.Dark);
+        surface.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(color.Alpha,
+            (byte)(color.Rgb >> 16), (byte)(color.Rgb >> 8), (byte)color.Rgb));
     });
     internal static Grid Layout() => Track(new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) }, static grid =>
     { grid.Padding = Value<Thickness>("PanelPadding"); grid.RowSpacing = Value<double>("PanelGap"); grid.CornerRadius = Value<CornerRadius>("PanelRadius"); });

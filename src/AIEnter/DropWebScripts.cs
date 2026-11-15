@@ -17,7 +17,7 @@ internal static class DropWebScripts
           const candidates=[...document.querySelectorAll('input[type=file]:not([disabled])')].map(e=>{
             if(extensions.length>1&&!e.multiple)return {e,score:-1};
             const accept=e.accept.toLowerCase().split(',').map(s=>s.trim()).filter(Boolean);
-            const accepts=ext=>accept.length===0||accept.some(a=>a==='*/*'||a===ext||a===mime[ext]||a==='image/*'&&images.includes(ext));
+          const accepts=ext=>accept.length===0||accept.some(a=>a==='*/*'||a===ext||a===mime[ext]||a===mime[ext]?.split('/')[0]+'/*'||a==='image/*'&&images.includes(ext));
             if(!extensions.every(accepts))return {e,score:-1};
             return {e,score:(accept.length?30:10)+(e.multiple?1:0)+(e.closest('form')?.contains(editor)?5:0)-(e.hasAttribute('capture')?30:0)};
           }).filter(c=>c.score>=0).sort((a,b)=>b.score-a.score);

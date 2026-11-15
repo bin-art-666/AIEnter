@@ -8,7 +8,7 @@ public partial class App : Application
     internal static string DataDirectory { get; private set; } = "";
     static AiService? ai;
     static UiStyleStore? uiStyle;
-    internal static AiService Ai => ai ??= new AiService(DataDirectory, verification: Environment.GetCommandLineArgs().Any(a => a is "--verify-toggle" or "--verify-taskbar" or "--verify-taskbar-crash" or "--verify-drop-entry"));
+    internal static AiService Ai => ai ??= new AiService(DataDirectory, verification: Environment.GetCommandLineArgs().Any(a => a is "--verify-toggle" or "--verify-taskbar" or "--verify-taskbar-crash" or "--verify-drop-entry" or "--verify-hotkey"));
     static UiStyleStore UiStyle => uiStyle ??= new(Path.Combine(DataDirectory, "ui-style.json"));
     internal static void StopAi() { ai?.Stop(); ai = null; }
 
