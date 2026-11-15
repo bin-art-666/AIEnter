@@ -97,10 +97,16 @@ internal static partial class PanelTheme
         surface.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
         // Paint within the XAML visual, so the same clip owns color and alpha.
         // A separate DesktopAcrylic target can leave a second compositor outline.
-        var color = Material().FlatColor(Application.Current.RequestedTheme == ApplicationTheme.Dark);
-        surface.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(color.Alpha,
-            (byte)(color.Rgb >> 16), (byte)(color.Rgb >> 8), (byte)color.Rgb));
+        surface.Background = new SolidColorBrush(BackplateColor(App.Appearance));
     });
+    internal static Windows.UI.Color BackplateColor(UiAppearance appearance)
+    {
+        var color = Material().FlatColor(Application.Current.RequestedTheme == ApplicationTheme.Dark);
+        double baselineOpacity = (100 - UiDefaults.BackplateTransparencyReference) / 100d;
+        byte alpha = appearance.BackplateTransparency == 0 ? (byte)255
+            : (byte)Math.Clamp(Math.Round(color.Alpha * (100 - appearance.BackplateTransparency) / 100d / baselineOpacity), 0, 255);
+        return Windows.UI.Color.FromArgb(alpha, (byte)(color.Rgb >> 16), (byte)(color.Rgb >> 8), (byte)color.Rgb);
+    }
     internal static Grid Layout() => Track(new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) }, static grid =>
     { grid.Padding = Value<Thickness>("PanelPadding"); grid.RowSpacing = Value<double>("PanelGap"); grid.CornerRadius = Value<CornerRadius>("PanelRadius"); });
     internal static Grid Header(UIElement title, FrameworkElement actions)

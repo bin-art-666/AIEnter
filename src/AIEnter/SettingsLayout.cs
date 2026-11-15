@@ -87,6 +87,7 @@ internal sealed partial class SettingsWindow
             if (ReferenceEquals(element, provider)) { Flush(); pageName = "AI 服务"; cardTitle = "默认 AI"; }
             if (ReferenceEquals(element, floatingMode)) { Flush(); pageName = "窗口与操作"; cardTitle = "窗口行为"; }
             if (ReferenceEquals(element, backplateRadius)) { Flush(); pageName = "外观"; cardTitle = "按钮与提示"; }
+            if (ReferenceEquals(element, backplateTransparency)) { Flush(); pageName = "外观"; cardTitle = "顶栏背板"; }
             if (ReferenceEquals(element, followCorners)) { Flush(); pageName = "外观"; cardTitle = "网页圆角"; }
             if (ReferenceEquals(element, taskbarSize)) { Flush(); pageName = "任务栏"; cardTitle = "任务栏入口"; }
             cardContent.Children.Add(element);
@@ -143,7 +144,14 @@ internal sealed partial class SettingsWindow
         var card = new StackPanel { Spacing = 8 };
         card.Children.Add(new TextBlock { Text = "实时预览", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         card.Children.Add(new TextBlock { Text = "按钮、底部状态提示和背板会随设置即时更新。", Foreground = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 95, 107, 112)), TextWrapping = TextWrapping.Wrap });
-        card.Children.Add(previewPlate);
+        var previewBackdrop = new Grid { MinHeight = 110 };
+        previewBackdrop.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        previewBackdrop.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        previewBackdrop.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 45, 58, 74)) });
+        var lightBackdrop = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 218, 230, 234)) };
+        Grid.SetColumn(lightBackdrop, 1); previewBackdrop.Children.Add(lightBackdrop);
+        previewBackdrop.Children.Add(previewPlate);
+        card.Children.Add(previewBackdrop);
         return new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 224, 231, 234)), Background = new SolidColorBrush(SurfaceColor()), Child = card };
     }
 
@@ -160,7 +168,7 @@ internal sealed partial class SettingsWindow
         previewPlate.Padding = new Thickness(appearance.WindowPadding + 8);
         previewSelectedButton.CornerRadius = previewNormalButton.CornerRadius = previewStatusButton.CornerRadius = new CornerRadius(appearance.ButtonRadius);
         previewSelectedButton.Height = previewNormalButton.Height = previewStatusButton.Height = appearance.ButtonSize;
-        previewPlate.Background = new SolidColorBrush(HighContrast ? SurfaceColor() : Windows.UI.Color.FromArgb(255, 231, 241, 243));
+        previewPlate.Background = new SolidColorBrush(HighContrast ? SurfaceColor() : PanelTheme.BackplateColor(appearance));
         previewPlate.BorderBrush = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 218, 228, 231));
         var normal = HighContrast ? SystemColor(Windows.UI.ViewManagement.UIColorType.Background, Microsoft.UI.Colors.White) : ColorValue(appearance.ButtonColor, 0x1C14DDFF);
         var accent = HighContrast ? SystemColor(Windows.UI.ViewManagement.UIColorType.Accent, Microsoft.UI.Colors.DodgerBlue) : ColorValue(appearance.SelectedButtonColor, 0xFF32D4EB);
