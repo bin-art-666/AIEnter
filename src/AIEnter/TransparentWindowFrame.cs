@@ -35,6 +35,8 @@ internal sealed class TransparentWindowFrame : IDisposable
         configuring = true;
         try
         {
+        int hostBackdrop = 1;
+        Native.DwmSetWindowAttribute(window, 17, ref hostBackdrop, sizeof(int));
         var margins = new Margins(); DwmExtendFrameIntoClientArea(window, ref margins);
         IntPtr region = CreateRectRgn(-2, -2, -1, -1);
         try

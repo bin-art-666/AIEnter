@@ -11,7 +11,8 @@ internal sealed partial class SettingsWindow
     Button? saveButton, discardButton;
     string savedSnapshot = "";
     bool allowHideOnce;
-    Border? previewPlate, previewSelectedButton, previewNormalButton, previewStatusButton;
+    BackplateSurface? previewPlate;
+    Border? previewSelectedButton, previewNormalButton, previewStatusButton;
     static bool HighContrast => new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
     static Windows.UI.Color SystemColor(Windows.UI.ViewManagement.UIColorType type, Windows.UI.Color fallback)
     {
@@ -86,8 +87,8 @@ internal sealed partial class SettingsWindow
             }
             if (ReferenceEquals(element, provider)) { Flush(); pageName = "AI 服务"; cardTitle = "默认 AI"; }
             if (ReferenceEquals(element, floatingMode)) { Flush(); pageName = "窗口与操作"; cardTitle = "窗口行为"; }
-            if (ReferenceEquals(element, backplateRadius)) { Flush(); pageName = "外观"; cardTitle = "按钮与提示"; }
             if (ReferenceEquals(element, backplateTransparency)) { Flush(); pageName = "外观"; cardTitle = "顶栏背板"; }
+            if (ReferenceEquals(element, buttonRadius)) { Flush(); pageName = "外观"; cardTitle = "按钮与提示"; }
             if (ReferenceEquals(element, followCorners)) { Flush(); pageName = "外观"; cardTitle = "网页圆角"; }
             if (ReferenceEquals(element, taskbarSize)) { Flush(); pageName = "任务栏"; cardTitle = "任务栏入口"; }
             cardContent.Children.Add(element);
@@ -139,8 +140,9 @@ internal sealed partial class SettingsWindow
         previewStatusButton = new Border { Height = 32, Padding = new Thickness(10, 0, 10, 0), HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = new TextBlock { Text = "AI 网页载入中…", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis } };
         var content = new StackPanel { Spacing = 10 }; content.Children.Add(top); content.Children.Add(previewStatusButton);
-        previewPlate = new Border { Padding = new Thickness(10), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 218, 228, 231)),
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 231, 241, 243)), Child = content };
+        previewPlate = new BackplateSurface { Padding = new Thickness(10), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 218, 228, 231)),
+            CornerRadius = new CornerRadius(UiDefaults.BackplateRadius) };
+        previewPlate.SetSurfaceContent(content);
         var card = new StackPanel { Spacing = 8 };
         card.Children.Add(new TextBlock { Text = "实时预览", FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         card.Children.Add(new TextBlock { Text = "按钮、底部状态提示和背板会随设置即时更新。", Foreground = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 95, 107, 112)), TextWrapping = TextWrapping.Wrap });
@@ -150,6 +152,7 @@ internal sealed partial class SettingsWindow
         previewBackdrop.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 45, 58, 74)) });
         var lightBackdrop = new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 218, 230, 234)) };
         Grid.SetColumn(lightBackdrop, 1); previewBackdrop.Children.Add(lightBackdrop);
+        Grid.SetColumnSpan(previewPlate, 2);
         previewBackdrop.Children.Add(previewPlate);
         card.Children.Add(previewBackdrop);
         return new Border { Padding = new Thickness(14), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 224, 231, 234)), Background = new SolidColorBrush(SurfaceColor()), Child = card };
@@ -168,7 +171,7 @@ internal sealed partial class SettingsWindow
         previewPlate.Padding = new Thickness(appearance.WindowPadding + 8);
         previewSelectedButton.CornerRadius = previewNormalButton.CornerRadius = previewStatusButton.CornerRadius = new CornerRadius(appearance.ButtonRadius);
         previewSelectedButton.Height = previewNormalButton.Height = previewStatusButton.Height = appearance.ButtonSize;
-        previewPlate.Background = new SolidColorBrush(HighContrast ? SurfaceColor() : PanelTheme.BackplateColor(appearance));
+        previewPlate.UpdateAppearance(appearance);
         previewPlate.BorderBrush = new SolidColorBrush(HighContrast ? TextColor() : Windows.UI.Color.FromArgb(255, 218, 228, 231));
         var normal = HighContrast ? SystemColor(Windows.UI.ViewManagement.UIColorType.Background, Microsoft.UI.Colors.White) : ColorValue(appearance.ButtonColor, 0x1C14DDFF);
         var accent = HighContrast ? SystemColor(Windows.UI.ViewManagement.UIColorType.Accent, Microsoft.UI.Colors.DodgerBlue) : ColorValue(appearance.SelectedButtonColor, 0xFF32D4EB);

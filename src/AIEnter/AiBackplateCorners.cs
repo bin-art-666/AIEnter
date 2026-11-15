@@ -58,6 +58,8 @@ internal sealed partial class AiWindow
         int bottomRadius = (int)Math.Round(webRadius * Native.GetDpiForWindow(handle) / 96d);
         root.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius, App.Appearance.BackplateRadius, webRadius, webRadius);
         backplate.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius, App.Appearance.BackplateRadius, 0, 0);
+        backplate.UpdateAppearance(App.Appearance);
+        if (SystemBackdrop is GlassBackdrop desktop) desktop.UpdateBlur(App.Appearance.BackplateBlur);
         // Grid.CornerRadius only rounds its own paint. Clip the complete content
         // visual so external glass and WebView composition layers cannot leak.
         var host = (Microsoft.UI.Xaml.Controls.Border)Content;
@@ -87,9 +89,9 @@ internal sealed partial class AiWindow
     {
         if (SystemBackdrop is not GlassBackdrop { TransparentCanvas: true, IsClearCanvas: true })
             throw new Exception("Window canvas still paints a rectangular glass backdrop.");
-        if (backplate.Background is not Microsoft.UI.Xaml.Media.SolidColorBrush
-            || backplate.CornerRadius.TopLeft != App.Appearance.BackplateRadius)
-            throw new Exception("The translucent backplate is not painted within its rounded XAML surface.");
+        if (!backplate.HasTintSurface || backplate.CornerRadius.TopLeft != App.Appearance.BackplateRadius
+            || backplate.BlurStrength != App.Appearance.BackplateBlur)
+            throw new Exception("The translucent/blurred backplate is not synchronized with its rounded XAML surface.");
         if (Math.Abs(backplate.ActualWidth - ((FrameworkElement)Content).ActualWidth) > 1
             || backplate.ActualHeight >= ((FrameworkElement)Content).ActualHeight / 2)
             throw new Exception("Glass still covers the conversation perimeter.");

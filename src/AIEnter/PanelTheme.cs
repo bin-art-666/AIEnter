@@ -91,14 +91,8 @@ internal static partial class PanelTheme
     internal static Style Style(string name) => Value<Style>(name + "Style");
     static MaterialOptions Material() => new(TintOpacity: (float)Value<double>("PanelTintOpacity"), LuminosityOpacity: (float)Value<double>("PanelLuminosityOpacity"));
     internal static GlassBackdrop Backdrop() => new(Material());
-    internal static Border BackdropSurface() => Track(new Border
-    { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Top }, static surface =>
-    {
-        surface.CornerRadius = new CornerRadius(App.Appearance.BackplateRadius);
-        // Paint within the XAML visual, so the same clip owns color and alpha.
-        // A separate DesktopAcrylic target can leave a second compositor outline.
-        surface.Background = new SolidColorBrush(BackplateColor(App.Appearance));
-    });
+    internal static BackplateSurface BackdropSurface() => Track(new BackplateSurface
+    { IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Top }, static surface => surface.UpdateAppearance(App.Appearance));
     internal static Windows.UI.Color BackplateColor(UiAppearance appearance)
     {
         var color = Material().FlatColor(Application.Current.RequestedTheme == ApplicationTheme.Dark);

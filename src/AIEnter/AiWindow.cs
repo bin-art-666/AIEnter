@@ -16,7 +16,7 @@ internal sealed partial class AiWindow : PanelWindow
     readonly Action changed;
     readonly bool verification;
     readonly Grid root = PanelTheme.Layout();
-    readonly Border backplate = PanelTheme.BackdropSurface();
+    readonly BackplateSurface backplate = PanelTheme.BackdropSurface();
     readonly Grid browsers = new();
     Border pageFrame = null!;
     readonly TextBlock status = new() { FontSize = 12, Opacity = .7, TextWrapping = TextWrapping.NoWrap,
@@ -127,7 +127,7 @@ internal sealed partial class AiWindow : PanelWindow
         saveTimer = DispatcherQueue.CreateTimer(); saveTimer.Interval = TimeSpan.FromMilliseconds(400); saveTimer.IsRepeating = false;
         saveTimer.Tick += (_, _) => SaveFloating();
         AppWindow.Changed += (_, e) => { if (Detached && !destroyed && (e.DidPositionChange || e.DidSizeChange)) { saveTimer.Stop(); saveTimer.Start(); } };
-        Closed += (_, _) => { destroyed = true; EndDockResize(true); saveTimer.Stop(); transientStatusTimer.Stop(); ClosePopup(); foreach (var page in pages.Values) page.View.Close(); pages.Clear(); };
+        Closed += (_, _) => { destroyed = true; backplate.Dispose(); EndDockResize(true); saveTimer.Stop(); transientStatusTimer.Stop(); ClosePopup(); foreach (var page in pages.Values) page.View.Close(); pages.Clear(); };
         var shell = new Grid(); shell.Children.Add(backplate); shell.Children.Add(root); InitializeDockResize(shell);
         InitializePanel(new Border { Background = new SolidColorBrush(Colors.Transparent), Child = shell,
             CornerRadius = new CornerRadius(App.Appearance.BackplateRadius) });

@@ -14,6 +14,7 @@ internal sealed partial class SettingsWindow : PanelWindow
     readonly Slider radius = Slider("网页圆角", 0, 40);
     readonly Slider backplateRadius = Slider("背板圆角", 12, 40);
     readonly Slider backplateTransparency = Slider("顶栏背板透明度（%）", 0, 80);
+    readonly Slider backplateBlur = Slider("顶栏背板模糊度（%）", 0, 100);
     readonly Slider buttonRadius = Slider("按钮圆角", 0, 20);
     readonly Slider buttonSize = Slider("按钮高度", 28, 44);
     readonly Slider padding = Slider("窗口内边距", 0, 16);
@@ -61,14 +62,16 @@ internal sealed partial class SettingsWindow : PanelWindow
         InitializeProviderManagement(fields);
         fields.Children.Add(floatingMode); fields.Children.Add(pinned);
         fields.Children.Add(Section("窗口外观"));
-        fields.Children.Add(backplateRadius); fields.Children.Add(backplateTransparency); fields.Children.Add(buttonRadius); fields.Children.Add(buttonSize); fields.Children.Add(padding);
+        fields.Children.Add(backplateTransparency); fields.Children.Add(backplateBlur); fields.Children.Add(backplateRadius);
+        fields.Children.Add(PanelTheme.Hint("透明度越高越通透；模糊度控制背景虚化。透明度为 0 时背板完全不透明，会遮住模糊效果；模糊度为 0 时关闭虚化。"));
+        fields.Children.Add(buttonRadius); fields.Children.Add(buttonSize); fields.Children.Add(padding);
         fields.Children.Add(PanelTheme.Hint("按钮高度和按钮圆角同时控制顶部 AI 按钮与底部状态提示；长提示显示省略号，鼠标悬停查看全文。"));
         InitializeButtonColorSettings(fields);
         fields.Children.Add(followCorners); fields.Children.Add(radius);
         followCorners.Toggled += (_, _) => { RefreshFields(); Preview(); };
         radius.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
 
-        foreach (var slider in new[] { backplateRadius, backplateTransparency, buttonRadius, buttonSize, padding, taskbarSize, glowRange, glowIntensity })
+        foreach (var slider in new[] { backplateRadius, backplateTransparency, backplateBlur, buttonRadius, buttonSize, padding, taskbarSize, glowRange, glowIntensity })
             slider.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
         taskbarSize.ValueChanged += (_, _) => UpdateTaskbarSizeLabel();
         glow.Toggled += (_, _) => { RefreshFields(); Preview(); RefreshDirty(); };
@@ -136,7 +139,7 @@ internal sealed partial class SettingsWindow : PanelWindow
     void LoadAppearance(UiAppearance value)
     {
         LoadButtonColors(value);
-        backplateRadius.Value = value.BackplateRadius; backplateTransparency.Value = value.BackplateTransparency;
+        backplateRadius.Value = value.BackplateRadius; backplateTransparency.Value = value.BackplateTransparency; backplateBlur.Value = value.BackplateBlur;
         buttonRadius.Value = value.ButtonRadius; buttonSize.Value = value.ButtonSize;
         padding.Value = value.WindowPadding; taskbarSize.Value = value.TaskbarIconSize; UpdateTaskbarSizeLabel();
         glow.IsOn = value.GlowEnabled; glowRange.Value = value.GlowRange; glowIntensity.Value = value.GlowIntensity;
@@ -144,7 +147,7 @@ internal sealed partial class SettingsWindow : PanelWindow
     }
     void UpdateTaskbarSizeLabel() { }
     UiAppearance ReadAppearance() => new((int)buttonRadius.Value, (int)buttonSize.Value, (int)padding.Value,
-        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value);
+        (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor, (int)backplateTransparency.Value, (int)backplateBlur.Value);
     void Preview()
     {
         if (syncing) return;
