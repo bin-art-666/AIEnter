@@ -28,8 +28,9 @@ internal sealed partial class SettingsWindow : PanelWindow
     readonly string? initialHotkeyWarning;
     protected override bool DismissOnOutside => false;
     protected override bool Frameless => false;
+    protected override bool AllowHide() { if (allowHideOnce) { allowHideOnce = false; return true; } if (IsDirty) { _ = ConfirmDiscardOrSave(); return false; } return true; }
     static Slider Slider(string header, int min, int max) => new()
-    { Header = header, Minimum = min, Maximum = max, StepFrequency = 1, TickFrequency = 1 };
+    { Header = header, Minimum = min, Maximum = max, StepFrequency = 1, TickFrequency = 0 };
     static TextBlock Section(string title) => new() { Text = title, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 0) };
 
     internal SettingsWindow(AiOptionsStore options, Action quit, Action<AiOptions> saveOptions, string? hotkeyWarning)
@@ -40,7 +41,7 @@ internal sealed partial class SettingsWindow : PanelWindow
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
         presenter.SetBorderAndTitleBar(true, true); presenter.IsMaximizable = false; presenter.IsMinimizable = false;
         SystemBackdrop = PanelTheme.Backdrop();
-        var layout = new Grid { Padding = new Thickness(18), RowSpacing = 12 };
+        var layout = new Grid { Padding = new Thickness(18), RowSpacing = 12, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(SystemColor(Windows.UI.ViewManagement.UIColorType.Background, Windows.UI.Color.FromArgb(255, 243, 247, 248))) };
         layout.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var fields = new StackPanel { Spacing = 16 };
@@ -64,31 +65,49 @@ internal sealed partial class SettingsWindow : PanelWindow
         InitializeButtonColorSettings(fields);
         fields.Children.Add(followCorners); fields.Children.Add(radius);
         followCorners.Toggled += (_, _) => { RefreshFields(); Preview(); };
-        radius.ValueChanged += (_, _) => Preview();
+        radius.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
 
         foreach (var slider in new[] { backplateRadius, buttonRadius, buttonSize, padding, taskbarSize, glowRange, glowIntensity })
-            slider.ValueChanged += (_, _) => Preview();
+            slider.ValueChanged += (_, _) => { Preview(); RefreshDirty(); };
         taskbarSize.ValueChanged += (_, _) => UpdateTaskbarSizeLabel();
-        glow.Toggled += (_, _) => { RefreshFields(); Preview(); };
+        glow.Toggled += (_, _) => { RefreshFields(); Preview(); RefreshDirty(); };
+        floatingMode.Toggled += (_, _) => RefreshDirty(); pinned.Toggled += (_, _) => RefreshDirty();
+        provider.SelectionChanged += (_, _) => RefreshDirty(); hotkey.TextChanged += (_, _) => RefreshDirty();
         var defaults = new Button { Content = "恢复外观默认值" };
         defaults.Click += (_, _) =>
         {
             syncing = true; LoadAppearance(new());
             followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius;
-            resetPanelSize = true; syncing = false; RefreshFields(); Preview();
+            resetPanelSize = true; syncing = false; RefreshFields(); Preview(); RefreshDirty();
             status.Text = "已预览默认外观；保存后恢复面板默认尺寸。";
         };
         fields.Children.Add(defaults);
         InitializeSettingsTransfer(fields);
-        var scroll = new ScrollViewer { Content = fields, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        layout.Children.Add(scroll);
-        var bottom = new StackPanel { Spacing = 8 };
+        var pages = new Dictionary<string, StackPanel>();
+        var pageNames = new[] { "AI 服务", "窗口与操作", "任务栏", "外观", "备份与恢复" };
+        var pageHost = new Grid();
+        foreach (var name in pageNames) { var page = new StackPanel { Spacing = 12 }; pages[name] = page; pageHost.Children.Add(new ScrollViewer { Content = page, Tag = name, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Visibility = name == "AI 服务" ? Visibility.Visible : Visibility.Collapsed }); }
+        var sidebar = new StackPanel { Spacing = 5, Width = 132 };
+        foreach (var name in pageNames) { var nav = new Button { Content = name, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Tag = name, Padding = new Thickness(12, 9, 10, 9) }; nav.Click += (_, _) => SelectPage((string)nav.Tag, pageHost, pages, sidebar); sidebar.Children.Add(nav); }
+        var contentGrid = new Grid { ColumnSpacing = 16 };
+        contentGrid.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); contentGrid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        contentGrid.Children.Add(sidebar); Grid.SetColumn(pageHost, 1); contentGrid.Children.Add(pageHost); Grid.SetRow(contentGrid, 0); layout.Children.Add(contentGrid);
+        var settingsChildren = fields.Children.ToArray();
+        foreach (var child in settingsChildren) fields.Children.Remove(child);
+        // Existing controls retain their state while navigation only changes visibility.
+        ArrangeSettingsPages(settingsChildren, pages);
+        SelectPage("AI 服务", pageHost, pages, sidebar);
+        var bottom = new StackPanel { Spacing = 8, Padding = new Thickness(10), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(SurfaceColor()) };
         bottom.Children.Add(status);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var save = new Button { Content = "保存设置" }; save.Click += (_, _) => Save();
+        var dirtyLabel = new TextBlock { Text = "所有更改已保存", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0,0,12,0) };
+        var save = new Button { Content = "保存设置", IsEnabled = false }; save.Click += (_, _) => Save();
+        var discard = new Button { Content = "放弃更改", IsEnabled = false }; discard.Click += (_, _) => DiscardDraft();
         var close = new Button { Content = "关闭" }; close.Click += (_, _) => Hide();
-        var exit = new Button { Content = "退出 AIEnter" }; exit.Click += (_, _) => quit();
-        actions.Children.Add(save); actions.Children.Add(close); actions.Children.Add(exit); bottom.Children.Add(actions);
+        var exit = new Button { Content = "退出 AIEnter" }; exit.Click += (_, _) => { if (IsDirty) _ = ConfirmQuit(quit); else quit(); };
+        bottom.Children.Add(dirtyLabel);
+        actions.Children.Add(discard); actions.Children.Add(save); actions.Children.Add(close); exit.Margin = new Thickness(10, 0, 0, 0); actions.Children.Add(exit); bottom.Children.Add(actions);
+        dirtyStatus = dirtyLabel; saveButton = save; discardButton = discard;
         Grid.SetRow(bottom, 1); layout.Children.Add(bottom);
         InitializePanel(layout);
         var display = Native.Monitors().First(m => m.Primary); var work = display.Info.Work;
@@ -108,8 +127,8 @@ internal sealed partial class SettingsWindow : PanelWindow
             hotkey.Text = value.Hotkey;
             followCorners.IsOn = value.FollowGlobalCorners; radius.Value = value.WebCornerRadius;
             LoadAppearance(value.Appearance ?? new());
-            status.Text = initialHotkeyWarning is not null ? "快捷键未能注册：" + initialHotkeyWarning : options.Warning ?? "外观调整实时预览，保存后记住；关闭撤销未保存的预览。";
-            syncing = false; RefreshFields();
+            status.Text = initialHotkeyWarning is not null ? "快捷键未能注册：" + initialHotkeyWarning : options.Warning ?? "调整会先预览；保存后生效。";
+            syncing = false; RefreshFields(); savedSnapshot = Snapshot(); RefreshDirty();
         }
         ShowPanel();
     }
@@ -120,8 +139,9 @@ internal sealed partial class SettingsWindow : PanelWindow
         buttonRadius.Value = value.ButtonRadius; buttonSize.Value = value.ButtonSize;
         padding.Value = value.WindowPadding; taskbarSize.Value = value.TaskbarIconSize; UpdateTaskbarSizeLabel();
         glow.IsOn = value.GlowEnabled; glowRange.Value = value.GlowRange; glowIntensity.Value = value.GlowIntensity;
+        UpdateAppearancePreview();
     }
-    void UpdateTaskbarSizeLabel() => taskbarSize.Header = $"任务栏图标大小：{(int)taskbarSize.Value} DIP（16–36）";
+    void UpdateTaskbarSizeLabel() { }
     UiAppearance ReadAppearance() => new((int)buttonRadius.Value, (int)buttonSize.Value, (int)padding.Value,
         (int)taskbarSize.Value, glow.IsOn, (int)glowRange.Value, (int)glowIntensity.Value, (int)backplateRadius.Value, normalButtonColor, selectedButtonColor);
     void Preview()
@@ -129,7 +149,9 @@ internal sealed partial class SettingsWindow : PanelWindow
         if (syncing) return;
         App.PreviewAppearance(ReadAppearance());
         App.Ai.PreviewCorners(followCorners.IsOn, (int)Math.Round(radius.Value));
+        UpdateAppearancePreview();
         status.Text = "正在预览；保存后记住，关闭撤销未保存的外观。";
+        RefreshDirty();
     }
     protected override void OnHiding()
     {
@@ -138,7 +160,9 @@ internal sealed partial class SettingsWindow : PanelWindow
     }
     void RefreshFields()
     {
-        radius.IsEnabled = !followCorners.IsOn; glowRange.IsEnabled = glowIntensity.IsEnabled = glow.IsOn;
+        radius.IsEnabled = !followCorners.IsOn; radius.Visibility = followCorners.IsOn ? Visibility.Collapsed : Visibility.Visible;
+        glowRange.IsEnabled = glowIntensity.IsEnabled = glow.IsOn;
+        glowRange.Visibility = glowIntensity.Visibility = glow.IsOn ? Visibility.Visible : Visibility.Collapsed;
     }
     void Save()
     {
@@ -153,7 +177,7 @@ internal sealed partial class SettingsWindow : PanelWindow
                 DockTopOffset = resetPanelSize ? 0 : options.Data.DockTopOffset,
                 Layouts = resetLayouts ? [] : options.Data.Layouts };
             saveOptions(candidate);
-            resetPanelSize = resetLayouts = false; App.PreviewAppearance(null); status.Text = "设置已保存。";
+            resetPanelSize = resetLayouts = false; App.PreviewAppearance(null); savedSnapshot = Snapshot(); RefreshDirty(); status.Text = "设置已保存。";
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or NotSupportedException or ArgumentException or InvalidOperationException)
         { status.Text = "保存失败：" + error.Message; }

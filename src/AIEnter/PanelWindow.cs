@@ -34,6 +34,7 @@ internal abstract class PanelWindow : Window
     bool VisibilityProtected => modalDepth > 0 || dragDepth > 0;
     protected virtual bool DismissOnOutside => true;
     protected virtual bool Frameless => true;
+    protected virtual bool AllowHide() => true;
     protected virtual bool HandlePanelWheel(Native.Point point,int delta,bool horizontal)=>false;
     protected virtual bool UsesPanelWheel=>false;
 
@@ -94,6 +95,7 @@ internal abstract class PanelWindow : Window
     internal void Hide()
     {
         if (!IsOpen || closed || VisibilityProtected) return;
+        if (!AllowHide()) return;
         activationVersion++;
         IsOpen = false;
         outsideClicks?.Dispose();

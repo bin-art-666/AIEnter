@@ -13,6 +13,7 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 - 任务栏圆形图标支持大小调节，对话打开时显示可调光晕。图标位于时间与“显示桌面”区域之间。
 - 文件、图片、链接和文字可拖入窗口或任务栏图标；图标悬停唤起窗口，松开交给当前 AI，加入附件／草稿，不自动发送。网站未就绪时保留内容并提供重试。
 - 外观实时预览，保存后记住，关闭设置撤销未保存的预览。
+- 设置窗口按 AI 服务、窗口与操作、任务栏、外观、备份与恢复分组；支持数值微调、预览和未保存更改确认。
 
 默认外观：面板 415.5×829 DIP，网页圆角 28 DIP、背板圆角 24 DIP；图标 26 DIP，光晕范围 9 DIP、强度 77%；普通按钮为半透明青色，选中按钮为亮青色。顶栏默认顺序为 DeepSeek、ChatGPT、豆包、小艺、Gemini、Grok、Kimi。完整清单见 [UI 默认值](config/ui-defaults.json)。已有显式设置不被覆盖。
 
@@ -20,7 +21,7 @@ Windows 11 任务栏上的 AI 对话入口。在时间日期右侧嵌入真实�
 
 ## 构建与运行
 
-当前正式版为 [v1.0.0](https://github.com/bin-art-666/AIEnter/releases/tag/v1.0.0)。下载 `AIEnter-v1.0.0-win-x64.zip`，完整解压后运行 `AIEnter.exe`，不要只复制单个 EXE。程序包包含 .NET 与 Windows App SDK 运行依赖，仍需要 WebView2 Runtime。
+当前正式版为 [v1.2.0](https://github.com/bin-art-666/AIEnter/releases/tag/v1.2.0)。下载 `AIEnter-v1.2.0-win-x64.zip`，完整解压后运行 `AIEnter.exe`，不要只复制单个 EXE。程序包包含 .NET 与 Windows App SDK 运行依赖，仍需要 WebView2 Runtime。
 
 时间右侧的真实任务栏按钮需要另行安装 Windhawk，导入发行包内的 `Taskbar/aienter-taskbar-ai.wh.cpp` 并将其 `executable` 设置为解压后的 `AIEnter.exe` 完整路径。具体步骤见 [发行版使用说明](docs/release-usage.md)。发行包不包含用户设置、登录缓存和 Windhawk 运行时，也不自动配置开机自启。
 

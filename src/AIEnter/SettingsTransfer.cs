@@ -68,7 +68,7 @@ internal sealed partial class SettingsWindow
             floatingMode.IsOn = draft.FloatingPanel; pinned.IsOn = draft.Pinned;
             followCorners.IsOn = draft.FollowGlobalCorners; radius.Value = draft.WebCornerRadius;
             LoadAppearance(draft.Appearance ?? new()); hotkey.Text = draft.Hotkey; resetPanelSize = false; resetLayouts = false;
-            RefreshFields(); Preview(); status.Text = "设置已载入预览；检查后点击“保存设置”应用。网页登录资料和窗口位置未导入。";
+            RefreshFields(); Preview(); RefreshDirty(); status.Text = "设置已载入预览；检查后点击“保存设置”应用。网页登录资料和窗口位置未导入。";
         }
         catch (Exception error) when (error is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException or ArgumentException or JsonException)
         { status.Text = "导入失败：" + error.Message; }
@@ -83,6 +83,6 @@ internal sealed partial class SettingsWindow
         followCorners.IsOn = UiDefaults.FollowGlobalCorners; radius.Value = UiDefaults.WebCornerRadius;
         LoadAppearance(defaults.Appearance ?? new()); hotkey.Text = "";
         resetPanelSize = true; resetLayouts = true; RefreshFields(); Preview();
-        status.Text = "已预览全部默认设置；保存后重置 AI 列表、界面和窗口位置。网页登录资料不变。";
+        RefreshDirty(); status.Text = "已预览全部默认设置；保存后重置 AI 列表、界面和窗口位置。网页登录资料不变。";
     }
 }
